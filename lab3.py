@@ -69,7 +69,7 @@ def main():
     elif ans == 'n':
         # Автоматическая генерация q и p = 2*q + 1 (оба простые)
         while True:
-            q = random.randint(1000, 10000)
+            q = random.randint(1000000, 1000000000)
             if ferm_test(q):
                 p_temp = 2 * q + 1
                 if ferm_test(p_temp):
