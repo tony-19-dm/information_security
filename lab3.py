@@ -5,10 +5,19 @@ def diffi(Xa, Xb, p, g):
     Ya = fast_pow(g, Xa, p)
     Yb = fast_pow(g, Xb, p)
 
+    print(f"\nYa = {g} ^ {Xa} mod {p} = {Ya}")
+    print(f"\nYb = {g} ^ {Xb} mod {p} = {Yb}")
+
     Zab = fast_pow(Yb, Xa, p)
     Zba = fast_pow(Ya, Xb, p)
 
-    print("Zab = ", Zab, "Zba = ", Zba)
+    print(f"\nZab = {Yb} ^ {Xa} mod {p} = {Zab}")
+    print(f"\nZba = {Ya} ^ {Xb} mod {p} = {Zba}")
+
+    if Zab == Zba:
+        print(f"\nКлючи совпадают: {Zab} = {Zba}")
+    else:
+        print("\nКлючи не совпадают")
 
 
 def main():
