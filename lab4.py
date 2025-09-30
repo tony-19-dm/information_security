@@ -1,5 +1,4 @@
 import random
-import math
 from lab1 import fast_pow, ferm_test, extended_gcd
 
 def Shamir(p, m, Ca, Da, Cb, Db):
