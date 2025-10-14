@@ -41,32 +41,74 @@ def shamir_full_cycle():
         print("\nОшибка: файлы не совпадают!")
 
 def shamir_encrypt_file(input_file, p=None, Ca=None, Cb=None):
-    if p is None and Ca is None and Cb is None:
+    print("Ввести числа вручную? (y/n): ")
+    
+    ans = input().strip().lower()
+    
+    if ans == 'y':
         while True:
-            p = random.getrandbits(32)
+            p = int(input("p (простое число) = "))
             if ferm(p):
                 break
+
+        while True:
+            Ca = int(input("Ca = "))
+            res = Evkl(Ca, p - 1)
+            if res[0] == 1:
+                break
+            else:
+                print("Ca должно быть взаимно простым с p - 1")
+
+        while True:
+            Da = int(input("Da = "))
+            if Ca * Da % (p - 1) == 1:
+                break
+            else:
+                print("Da должно быть взаимно обратным с Ca")
+
+        while True:
+            Cb = int(input("Cb = "))
+            res = Evkl(Cb, p - 1)
+            if res[0] == 1:
+                break
+            else:
+                print("Cb должно быть взаимно простым с p - 1")
+        
+        while True:
+            Db = int(input("Db = "))
+            if Cb * Db % (p - 1) == 1:
+                break
+            else:
+                print("Db должно быть взаимно обратным с Cb")
+
+    elif ans == 'n':
+        while True:
+            p = random.randint(1000000, 100000000)
+            if ferm(p):
+                break
+        print(f"p = {p}")
+        
         while True:
             Ca = random.randint(2, p-2)
-            if Evkl(Ca, p-1)[0] == 1:
+            res = Evkl(Ca, p - 1)
+            if res[0] == 1:
                 break
+        
+        Da = res[1]
+        if Da < 0:
+            Da += (p - 1)
+        print(f"Ca = {Ca}, Da = {Da}")
+        
         while True:
             Cb = random.randint(2, p-2)
-            if Evkl(Cb, p-1)[0] == 1:
+            res = Evkl(Cb, p - 1)
+            if res[0] == 1:
                 break
-        print(f"p = {p}\nCa = {Ca}\nCb = {Cb}")
-    
-    if not ferm(p):
-        raise ValueError("p должно быть простым числом")
-    
-    if Evkl(Ca, p-1)[0] != 1 or Evkl(Cb, p-1)[0] != 1:
-        raise ValueError("Ca и Cb должны быть взаимно просты с p-1")
-    
-    _, Da, _ = Evkl(Ca, p-1)
-    Da %= (p-1)
-    _, Db, _ = Evkl(Cb, p-1)
-    Db %= (p-1)
-    print(f"Da = {Da}, Db = {Db}")
+        
+        Db = res[1]
+        if Db < 0:
+            Db += (p - 1)
+        print(f"Cb = {Cb}, Db = {Db}")
     
     with open(input_file, 'rb') as f:
         file_data = f.read()
@@ -97,11 +139,8 @@ def shamir_decrypt_file(encrypted_blocks, p, Db, original_size):
 
 def save_encrypted_binary(filename, p, Ca, Cb, Da, Db, encrypted_blocks, original_size):
     with open(filename, 'wb') as f:
-        # сохраняем заголовок
         f.write(struct.pack('<6Q', p, Ca, Cb, Da, Db, original_size))
-        # сохраняем количество блоков
         f.write(struct.pack('<I', len(encrypted_blocks)))
-        # сохраняем каждый блок как три числа
         for X1, X2, X3 in encrypted_blocks:
             f.write(struct.pack('<3Q', X1, X2, X3))
 

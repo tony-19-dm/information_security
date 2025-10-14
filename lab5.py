@@ -4,11 +4,7 @@ import struct
 from typing import List, Tuple
 from lab1 import ferm_test, fast_pow
 
-def choose_block_size_for_p(p: int) -> int:
-    """
-    Выбирает максимальное k байт, такое что (2^(8k) - 1) < p.
-    k >= 1.
-    """
+def choose_block_size_for_p(p: int) -> int:  
     if p <= 2:
         raise ValueError("p слишком мало")
     k = (p.bit_length() - 1) // 8
