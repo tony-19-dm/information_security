@@ -5,10 +5,6 @@ from typing import List, Tuple
 from lab1 import ferm_test, fast_pow, extended_gcd
 
 def choose_block_size_for_N(N: int) -> int:
-    """
-    Выбираем максимальное k байт такое, что 2^(8k) - 1 < N
-    Гарантируем k >= 1.
-    """
     if N <= 2:
         raise ValueError("N слишком мало")
     k = (N.bit_length() - 1) // 8
@@ -64,7 +60,6 @@ def rsa_file_full_cycle():
         while True:
             q = int(input("q (простое число) = "))
             if ferm_test(q):
-                # Проверяем условие p = 2 * q + 1 и простоту p
                 p_candidate = 2 * q + 1
                 if ferm_test(p_candidate):
                     p = p_candidate
@@ -85,7 +80,7 @@ def rsa_file_full_cycle():
         if gcd_res[0] != 1:
             print("Внимание: введённый d не взаимно прост с phi; необходимо выбрать другое d.")
             return
-        c = gcd_res[1] % phi  # обратное d^{-1} mod phi
+        c = gcd_res[1] % phi
         x_saved = 0
     else:
         
@@ -99,12 +94,10 @@ def rsa_file_full_cycle():
         
         N = p * q
         phi = (p - 1) * (q - 1)
-        # выбираем d < phi, gcd(d,phi)=1
         while True:
             d = random.randint(2, phi - 1)
             if extended_gcd(d, phi)[0] == 1:
                 break
-        # вычисляем c = d^{-1} mod phi
         g, xinv, y = extended_gcd(d, phi)
         c = xinv % phi
         print(f"Сгенерировано: p={p}, q={q}, N={N}, d={d}, c(приватный)={c}")

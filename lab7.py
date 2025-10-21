@@ -37,35 +37,67 @@ def load_vernam_container(filename: str):
 def dh_generate_params_or_use_input():
     choice = input("Ввести p,g вручную? (y/n) ").strip().lower()
     if choice == 'y':
-        p = int(input("p (простое) = ").strip())
-        g = int(input("g = ").strip())
-        if not ferm_test(p):
-            print("Внимание: p не прошло тест простоты (ferm_test). Продолжаем, но результат может быть некорректен.")
-        have_a = input("Ввести приватный ключ Алисы a вручную? (y/n) ").strip().lower() == 'y'
-        if have_a:
-            a = int(input("a (приватный Алисы) = ").strip())
-        else:
-            a = random.randint(2, p-2)
-        have_b = input("Ввести приватный ключ Боба b вручную? (y/n) ").strip().lower() == 'y'
-        if have_b:
-            b = int(input("b (приватный Боба) = ").strip())
-        else:
-            b = random.randint(2, p-2)
+        while True:
+            q = int(input("q (простое число) = "))
+            if ferm_test(q):
+                # Проверяем условие p = 2 * q + 1 и простоту p
+                p_candidate = 2 * q + 1
+                if ferm_test(p_candidate):
+                    p = p_candidate
+                    print(f"p = 2*q + 1 = {p} (простое число)")
+                    break
+                else:
+                    print(f"q - простое, но p = 2*q + 1 = {p_candidate} не является простым")
+                    print("Введите другое q")
+            else:
+                print("q - не простое, введите q повторно")
+        
+        while True:
+            g = int(input("g (1 < a < p - 1) = "))
+            if 1 < g < p - 1:
+                if fast_pow(g, q, p) != 1:
+                    break
+                print("не выполняется условие g^q mod p != 1")
+            else:
+                print("g должно быть в диапазоне (1, p - 1)")
+        
+        while True:
+            Xa = int(input("(секретный ключ Алисы) Xa = "))
+            if 1 <= Xa < p:
+                break
+            else:
+                print("Xa должно быть в диапазоне [1, p)")
+
+        while True:
+            Xb = int(input("(секретный ключ Боба) Xb = "))
+            if 1 <= Xb < p:
+                break
+            else:
+                print("Xb должно быть в диапазоне [1, p)")
+        
     else:
         while True:
-            p = random.getrandbits(32)
-            if ferm_test(p):
+            q = random.randint(1000000, 1000000000)
+            if ferm_test(q):
+                p_temp = 2 * q + 1
+                if ferm_test(p_temp):
+                    p = p_temp
+                    break
+        
+        # Генерация g - первообразного корня по модулю p
+        while True:
+            g = random.randint(2, p - 2)
+            if fast_pow(g, q, p) != 1:  # проверка условия g^q mod p != 1
                 break
-        g = random.randint(2, p-2)
-        if g in (1, p-1):
-            g = 2
-        a = random.randint(2, p-2)
-        b = random.randint(2, p-2)
-        print(f"Сгенерировано: p={p}, g={g}, a(Алиса)={a}, b(Боб)={b}")
+        
+        # Генерация секретных ключей
+        Xa = random.randint(1, p - 1)
+        Xb = random.randint(1, p - 1)
+        print(f"Сгенерировано: p={p}, g={g}, a(Алиса)={Xa}, b(Боб)={Xb}")
 
-    A = fast_pow(g, a, p)
-    B = fast_pow(g, b, p)
-    return p, g, a, b, A, B
+    A = fast_pow(g, Xa, p)
+    B = fast_pow(g, Xb, p)
+    return p, g, Xa, Xb, A, B
 
 def vernam_dh_file_full_cycle():
     input_file = input("Введите путь к файлу для шифрования (любой формат): ").strip()
@@ -80,8 +112,10 @@ def vernam_dh_file_full_cycle():
     original_size = len(data)
     print(f"Исходный размер: {original_size} байт")
 
+    # Diffi
     shared_by_alice = fast_pow(B_pub, a_priv, p)
     shared_by_bob = fast_pow(A_pub, b_priv, p)
+
     if shared_by_alice != shared_by_bob:
         print("Ошибка: общий секрет не совпадает у сторон (что-то пошло не так).")
         return
@@ -104,6 +138,7 @@ def vernam_dh_file_full_cycle():
     else:
         b_to_use = int(input("Введите приватный ключ b для расшифровки: ").strip())
 
+    # Diffi
     shared = fast_pow(A2, b_to_use, p2)
     key_for_decrypt = derive_key_bytes_from_shared(shared, orig_size2)
 
