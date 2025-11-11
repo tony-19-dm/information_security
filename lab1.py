@@ -1,6 +1,7 @@
 import random
 
 def extended_gcd(a, b):
+    """Нахождение НОД"""
     U = [a, 1, 0]
     V = [b, 0, 1]
 
@@ -12,6 +13,7 @@ def extended_gcd(a, b):
     return U
 
 def fast_pow(a, x, p):
+    """Быстрое возведение в степень"""
     y = 1
     a = a % p
     
@@ -24,7 +26,7 @@ def fast_pow(a, x, p):
     return y
 
 def ferm_test(n):
-
+    """Проверка на простоту"""
     k = 50
     
     if n <= 1:
