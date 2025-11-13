@@ -13,7 +13,7 @@ class RSASignature:
     
     def generate_keys(self):
         """Генерация ключей RSA"""
-        # Генерируем простые числа в диапазоне 32500-45000
+        # Генерируем простые числа в диапазоне [32500, 45000]
         while(True):
             self.p = random.randint(32500, 45000)
             if ferm_test(self.p):
@@ -57,7 +57,6 @@ class RSASignature:
         if self.c == 0 or self.n == 0:
             raise ValueError("Сначала сгенерируйте ключи!")
         
-        # Чтение файла
         with open(filename, 'rb') as f:
             file_data = f.read()
         
@@ -75,7 +74,6 @@ class RSASignature:
             s = fast_pow(h, self.c, self.n)
             signature_bytes.append(s)
         
-        # Сохраняем подпись
         if output_filename is None:
             output_filename = filename + '.sig'
         
@@ -90,15 +88,12 @@ class RSASignature:
         """Проверка подписи"""
         if self.d == 0 or self.n == 0:
             raise ValueError("Сначала сгенерируйте ключи!")
-        
-        # Чтение исходного файла
+    
         with open(filename, 'rb') as f:
             file_data = f.read()
         
-        # Вычисление хеша
         file_hash = hashlib.sha256(file_data).digest()
-        
-        # Чтение подписи
+
         with open(signature_filename, 'r') as f:
             signature_data = f.read().strip()
         
