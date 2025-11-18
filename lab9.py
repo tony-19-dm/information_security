@@ -12,7 +12,6 @@ class ElGamalSignature:
     
     def generate_keys(self):
         """Генерация ключей Эль-Гамаля"""
-
         while True:
             self.q = random.randint(2**15, 2**16)
             if ferm_test(self.q):
@@ -44,7 +43,7 @@ class ElGamalSignature:
         return x % m
     
     def sign_file(self, filename, output_filename=None):
-        """Подпись файла по схеме Эль-Гамаля"""
+        """Подпись файла по схеме Эль-Гамаля (побайтовая подпись хеша)"""
         if self.p == 0 or self.g == 0 or self.x == 0:
             raise ValueError("Сначала сгенерируйте ключи!")
         
@@ -52,37 +51,44 @@ class ElGamalSignature:
             file_data = f.read()
         
         file_hash = hashlib.sha256(file_data).digest()
-        # Преобразуем хеш в целое число
-        h = int.from_bytes(file_hash, byteorder='big') % self.p
         
         print(f"Хеш файла: {file_hash.hex()}")
-        print(f"Числовое представление хеша: {h}")
         
-        # Генерируем случайное k, взаимно простое с p-1
-        while True:
-            k = random.randint(2, self.p - 2)
-            if extended_gcd(k, self.p - 1)[0] == 1:
-                break
+        r_list = []
+        s_list = []
         
-        r = fast_pow(self.g, k, self.p)
-        
-        k_inv = self._mod_inverse(k, self.p - 1)
-        u = (h - self.x * r) % (self.p - 1)
-        s = (u * k_inv) % (self.p - 1)
+        for byte in file_hash:
+            h = byte
+            
+            while True:
+                k = random.randint(2, self.p - 2)
+                if extended_gcd(k, self.p - 1)[0] == 1:
+                    break
+            
+            # Вычисляем r = g^k mod p
+            r = fast_pow(self.g, k, self.p)
+            
+            # Вычисляем s = (h - x*r) * k^(-1) mod (p-1)
+            k_inv = self._mod_inverse(k, self.p - 1)
+            u = (h - self.x * r) % (self.p - 1)
+            s = (u * k_inv) % (self.p - 1)
+            
+            r_list.append(r)
+            s_list.append(s)
         
         if output_filename is None:
             output_filename = filename + '.sig'
         
-        # Сохраняем подпись (r, s)
         with open(output_filename, 'w') as f:
-            f.write(f"{r}\n{s}")
+            f.write(' '.join(str(r) for r in r_list) + '\n')
+            f.write(' '.join(str(s) for s in s_list))
         
-        print(f"Подпись (r, s) = ({r}, {s})")
         print(f"Подпись сохранена в файл: {output_filename}")
-        return (r, s)
+        print(f"Размер подписи: {len(r_list)} пар (r, s)")
+        return (r_list, s_list)
     
     def verify_signature(self, filename, signature_filename):
-        """Проверка подписи Эль-Гамаля"""
+        """Проверка подписи Эль-Гамаля (побайтовая проверка)"""
         if self.p == 0 or self.g == 0 or self.y == 0:
             raise ValueError("Сначала сгенерируйте или загрузите ключи!")
         
@@ -90,7 +96,6 @@ class ElGamalSignature:
             file_data = f.read()
         
         file_hash = hashlib.sha256(file_data).digest()
-        h = int.from_bytes(file_hash, byteorder='big') % self.p
         
         with open(signature_filename, 'r') as f:
             signature_data = f.readlines()
@@ -98,34 +103,40 @@ class ElGamalSignature:
         if len(signature_data) < 2:
             raise ValueError("Неверный формат файла подписи")
         
-        r = int(signature_data[0].strip())
-        s = int(signature_data[1].strip())
+        r_list = [int(r) for r in signature_data[0].strip().split()]
+        s_list = [int(s) for s in signature_data[1].strip().split()]
         
-        print(f"Загруженная подпись (r, s) = ({r}, {s})")
-        print(f"Вычисленный хеш: {h}")
-        
-        # Проверяем условия: 1 < r < p и 0 < s < p-1
-        if r <= 1 or r >= self.p:
-            print(f"Ошибка: r = {r} не удовлетворяет условию 1 < r < p")
+        if len(r_list) != len(file_hash) or len(s_list) != len(file_hash):
+            print(f"Ошибка: размер подписи не соответствует размеру хеша")
             return False
         
-        if s <= 0 or s >= self.p - 1:
-            print(f"Ошибка: s = {s} не удовлетворяет условию 0 < s < p-1")
-            return False
+        print(f"Загружена подпись для {len(r_list)} байт хеша")
+        print(f"Вычисленный хеш: {file_hash.hex()}")
         
-        # Проверяем подпись: g^h mod p = y^r * r^s mod p
-        left_side = fast_pow(self.g, h, self.p)
-        right_side = (fast_pow(self.y, r, self.p) * fast_pow(r, s, self.p)) % self.p
+        # Проверяем подпись для каждого байта
+        valid_count = 0
+        total_bytes = len(file_hash)
         
-        print(f"Левая часть проверки (g^h mod p): {left_side}")
-        print(f"Правая часть проверки (y^r * r^s mod p): {right_side}")
+        for i, (h_byte, r, s) in enumerate(zip(file_hash, r_list, s_list)):
+            # Проверяем условия: 1 < r < p и 0 < s < p-1
+            if r <= 1 or r >= self.p:
+                print(f"Ошибка: r[{i}] = {r} не удовлетворяет условию 1 < r < p")
+                continue
+            
+            if s <= 0 or s >= self.p - 1:
+                print(f"Ошибка: s[{i}] = {s} не удовлетворяет условию 0 < s < p-1")
+                continue
+            
+            # Проверяем подпись: g^h mod p = y^r * r^s mod p
+            left_side = fast_pow(self.g, h_byte, self.p)
+            right_side = (fast_pow(self.y, r, self.p) * fast_pow(r, s, self.p)) % self.p
+            
+            if left_side == right_side:
+                valid_count += 1
+            else:
+                print(f"Ошибка проверки для байта {i}: h={h_byte}, r={r}, s={s}")
         
-        is_valid = (left_side == right_side)
-        
-        if is_valid:
-            print("✓ Подпись верна!")
-        else:
-            print("✗ Подпись неверна!")
+        is_valid = (valid_count == total_bytes)
         
         return is_valid
     
@@ -190,7 +201,13 @@ def main():
         elif choice == '3':
             filename = input("Введите имя файла для проверки: ")
             signature_file = input("Введите имя файла с подписью: ")
-            elgamal.verify_signature(filename, signature_file)
+            try:
+                if elgamal.verify_signature(filename, signature_file):
+                    print("✓ Подпись верна!")
+                else:
+                    print("✗ Подпись неверна!")
+            except Exception as e:
+                print(f"Ошибка при проверке: {e}")
         
         elif choice == '4':
             print("1. Сохранить открытый ключ")
