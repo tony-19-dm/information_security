@@ -4,6 +4,7 @@ from lab1 import ferm_test, extended_gcd, fast_pow
 
 class ElGamalSignature:
     def __init__(self):
+        self.q = 0
         self.p = 0
         self.g = 0
         self.x = 0  # закрытый ключ
@@ -11,13 +12,20 @@ class ElGamalSignature:
     
     def generate_keys(self):
         """Генерация ключей Эль-Гамаля"""
+
         while True:
-            self.p = random.randint(2**15, 2**16)
-            if ferm_test(self.p):
+            self.q = random.randint(2**15, 2**16)
+            if ferm_test(self.q):
+                p_temp = 2 * self.q + 1
+                if ferm_test(p_temp):
+                    self.p = p_temp
+                    break
+        
+        while True:
+            self.g = random.randint(2, self.p - 2)
+            if fast_pow(self.g, self.q, self.p) != 1:  # проверка условия g^q mod p != 1
                 break
-        
-        self.g = self._find_primitive_root(self.p)
-        
+
         self.x = random.randint(2, self.p - 2)
         
         self.y = fast_pow(self.g, self.x, self.p)
@@ -27,32 +35,6 @@ class ElGamalSignature:
         print(f"g = {self.g}")
         print(f"Закрытый ключ (x) = {self.x}")
         print(f"Открытый ключ (y) = {self.y}")
-    
-    def _find_primitive_root(self, p):
-        """Нахождение первообразного корня по модулю p"""
-        if p == 2:
-            return 1
-        
-        # Факторизуем p-1
-        factors = self._prime_factors(p - 1)
-        
-        for g in range(2, p):
-            if all(fast_pow(g, (p - 1) // factor, p) != 1 for factor in factors):
-                return g
-        return None
-    
-    def _prime_factors(self, n):
-        """Разложение числа на простые множители"""
-        factors = set()
-        d = 2
-        while d * d <= n:
-            while n % d == 0:
-                factors.add(d)
-                n //= d
-            d += 1
-        if n > 1:
-            factors.add(n)
-        return factors
     
     def _mod_inverse(self, a, m):
         """Вычисление обратного элемента по модулю"""
@@ -147,8 +129,9 @@ class ElGamalSignature:
         
         return is_valid
     
-    def save_public_key(self, filename):
+    def save_public_key(self):
         """Сохранение открытого ключа"""
+        filename = 'o'
         with open(filename, 'w') as f:
             f.write(f"{self.p}\n{self.g}\n{self.y}")
         print(f"Открытый ключ сохранен в: {filename}")
@@ -162,8 +145,9 @@ class ElGamalSignature:
         self.y = int(lines[2].strip())
         print(f"Открытый ключ загружен: p={self.p}, g={self.g}, y={self.y}")
     
-    def save_private_key(self, filename):
+    def save_private_key(self):
         """Сохранение закрытого ключа"""
+        filename = 'c'
         with open(filename, 'w') as f:
             f.write(f"{self.p}\n{self.g}\n{self.x}\n{self.y}")
         print(f"Закрытый ключ сохранен в: {filename}")
@@ -213,11 +197,9 @@ def main():
             print("2. Сохранить закрытый ключ")
             key_choice = input("Выберите: ")
             if key_choice == '1':
-                filename = input("Введите имя файла: ")
-                elgamal.save_public_key(filename)
+                elgamal.save_public_key()
             elif key_choice == '2':
-                filename = input("Введите имя файла: ")
-                elgamal.save_private_key(filename)
+                elgamal.save_private_key()
         
         elif choice == '5':
             print("1. Загрузить открытый ключ")
