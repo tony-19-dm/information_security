@@ -56,6 +56,7 @@ class GOSTSignature:
         with open(filename, 'rb') as f:
             file_data = f.read()
         
+        # Шаг 1
         file_hash = hashlib.sha256(file_data).digest()
         
         print(f"Хеш файла: {file_hash.hex()}")
@@ -64,22 +65,25 @@ class GOSTSignature:
         s_list = []
         
         for byte in file_hash:
-            h = byte
+            h = byte % self.q  # гарантируем, что 0 < h < q
             
             while True:
+                # Шаг 2: 0 < k < q
                 k = random.randint(1, self.q - 1)
                 
-                # r = (a^k mod p) mod q
+                # Шаг 3: r = (a^k mod p) mod q
                 r = fast_pow(self.a, k, self.p) % self.q
                 
+                # Если r = 0, то возвращаемся к шагу 2
                 if r == 0:
-                    continue  # если r=0, генерируем новое k
+                    continue
                 
-                # s = (k * h + x * r) mod q
+                # Шаг 4: s = (k*h + x*r) mod q
                 s = (k * h + self.x * r) % self.q
                 
+                # Если s = 0, то возвращаемся к шагу 2
                 if s == 0:
-                    continue  # если s=0, генерируем новое k
+                    continue
                 
                 r_list.append(r)
                 s_list.append(s)
@@ -104,6 +108,7 @@ class GOSTSignature:
         with open(filename, 'rb') as f:
             file_data = f.read()
         
+        # Шаг 1
         file_hash = hashlib.sha256(file_data).digest()
         
         with open(signature_filename, 'r') as f:
@@ -122,12 +127,11 @@ class GOSTSignature:
         print(f"Загружена подпись для {len(r_list)} байт хеша")
         print(f"Вычисленный хеш: {file_hash.hex()}")
         
-        # Проверяем подпись для каждого байта
         valid_count = 0
         total_bytes = len(file_hash)
         
         for i, (h_byte, r, s) in enumerate(zip(file_hash, r_list, s_list)):
-            # Проверяем условия: 0 < r < q и 0 < s < q
+            # Шаг 2: 0 < r, s < q
             if r <= 0 or r >= self.q:
                 print(f"Ошибка: r[{i}] = {r} не удовлетворяет условию 0 < r < q")
                 continue
@@ -136,31 +140,29 @@ class GOSTSignature:
                 print(f"Ошибка: s[{i}] = {s} не удовлетворяет условию 0 < s < q")
                 continue
             
-            # v = h^(q-2) mod q
-            v = fast_pow(h_byte, self.q - 2, self.q)
+            h = h_byte % self.q
             
-            # z1 = s * v mod q
-            z1 = (s * v) % self.q
+            # Шаг 3: u1 = s * h^(-1) mod q, u2 = -r * h^(-1) mod q
+            h_inv = self._mod_inverse(h, self.q)
+            u1 = (s * h_inv) % self.q
+            u2 = (-r * h_inv) % self.q
             
-            # z2 = (q - r) * v mod q
-            z2 = ((self.q - r) * v) % self.q
+            # Шаг 4: v = (a^u1 * y^u2 mod p) mod q
+            v = (fast_pow(self.a, u1, self.p) * fast_pow(self.y, u2, self.p)) % self.p
+            v = v % self.q
             
-            # u = (a^z1 * y^z2 mod p) mod q
-            u = (fast_pow(self.a, z1, self.p) * fast_pow(self.y, z2, self.p)) % self.p
-            u = u % self.q
-            
-            # Подпись верна, если u = r
-            if u == r:
+            # Шаг 5: v = r
+            if v == r:
                 valid_count += 1
             else:
-                print(f"Ошибка проверки для байта {i}: h={h_byte}, r={r}, s={s}, u={u}")
+                print(f"Ошибка проверки для байта {i}: h={h}, r={r}, s={s}, v={v}")
         
         is_valid = (valid_count == total_bytes)
         
         if is_valid:
             print(f"✓ Подпись верна! Все {total_bytes} байт проверены успешно.")
         else:
-            print(f"✗ Подпись неверна! Проверено {valid_count} из {total_bytes} байт.")
+            print(f"✗ Подпись неверна! Верны {valid_count} из {total_bytes} байт.")
         
         return is_valid
     
@@ -227,13 +229,8 @@ def main():
         elif choice == '3':
             filename = input("Введите имя файла для проверки: ")
             signature_file = input("Введите имя файла с подписью: ")
-            try:
-                if gost.verify_signature(filename, signature_file):
-                    print("✓ Подпись верна!")
-                else:
-                    print("✗ Подпись неверна!")
-            except Exception as e:
-                print(f"Ошибка при проверке: {e}")
+
+            gost.verify_signature(filename, signature_file)
         
         elif choice == '4':
             print("1. Сохранить открытый ключ")
