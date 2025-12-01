@@ -175,11 +175,9 @@ class ScalableMentalPoker:
                 encrypted_card, chain = self.encrypt_with_all_players(card)
                 print(f"     Зашифрована всеми игроками: {encrypted_card}")
                 
-                # Шаг 2: Игрок выбирает свою карту (в реальном протоколе - интерактивно)
-                # Здесь для простоты: карта назначается игроку
+                # Шаг 2: Игрок выбирает свою карту 
                 
                 # Шаг 3: Дешифруем для игрока
-                # Для этого нужно, чтобы все игроки кроме получателя дешифровали
                 decrypted_card = self.decrypt_for_specific_player(encrypted_card, player_id)
                 
                 self.players[player_id]['cards'].append(decrypted_card)
