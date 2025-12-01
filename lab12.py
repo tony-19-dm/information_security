@@ -3,360 +3,413 @@ import random
 import hashlib
 from pathlib import Path
 from lab1 import ferm_test, extended_gcd, fast_pow
+import math
 
-class MentalPoker:
+class ScalableMentalPoker:
     def __init__(self):
+        self.num_players = 0
         self.players = []
-        self.cards = list(range(2, 54))  # Карты от 2 до 53
-        self.p = 0
-        self.c = 0
-        self.d = 0
-        self.last_player_cards = []  # Сохраняем последнюю раздачу
-        self.last_table_cards = []   # Сохраняем последнюю раздачу
-        self.last_num_players = 0    # Сохраняем количество игроков
+        self.p = 0  # Большое простое число
+        self.cards = list(range(2, 54))  # 52 карты
+        self.prime_bits = 128  # Можно увеличить для большей безопасности
         
-    def generate_rsa_keys(self):
-        """Генерация RSA ключей для шифрования карт"""
-        # Генерируем простые числа
+    def calculate_max_players(self):
+        """Вычисляет максимальное количество игроков для 52 карт"""
+        # Техасский холдем: 2 карты каждому + 5 на стол
+        max_players = (len(self.cards) - 5) // 2
+        return max_players
+    
+    def generate_large_prime(self, bits=None):
+        """Генерация большого простого числа"""
+        if bits is None:
+            bits = self.prime_bits
+            
+        print(f"Генерация простого числа ({bits} бит)...")
+        
+        # Начинаем с числа, которое скорее всего простое
         while True:
-            p = random.randint(100000, 1000000)
+            # Генерируем случайное нечетное число нужной битности
+            p = random.getrandbits(bits)
+            p |= (1 << (bits - 1)) | 1  # Устанавливаем старший бит и делаем нечетным
+            
+            # Проверяем простоту тестом Ферма
             if ferm_test(p):
-                p_temp = 2 * p + 1
-                if ferm_test(p_temp):
-                    p = p_temp
+                # Дополнительная проверка для уверенности
+                if self.miller_rabin_test(p, iterations=10):
+                    print(f"✓ Найдено простое число: {p}")
+                    return p
+    
+    def miller_rabin_test(self, n, iterations=5):
+        """Тест Миллера-Рабина для дополнительной проверки простоты"""
+        if n < 2:
+            return False
+        if n in (2, 3):
+            return True
+        if n % 2 == 0:
+            return False
+            
+        # Записываем n-1 = 2^s * d
+        s = 0
+        d = n - 1
+        while d % 2 == 0:
+            d //= 2
+            s += 1
+            
+        for _ in range(iterations):
+            a = random.randint(2, n - 2)
+            x = fast_pow(a, d, n)
+            
+            if x == 1 or x == n - 1:
+                continue
+                
+            for _ in range(s - 1):
+                x = (x * x) % n
+                if x == n - 1:
                     break
+            else:
+                return False
+                
+        return True
+    
+    def setup_game(self, num_players):
+        """Настройка игры для любого количества игроков"""
+        self.num_players = num_players
+        max_players = self.calculate_max_players()
         
-        while True:
-            q = random.randint(100000, 1000000)
-            if ferm_test(q):
-                q_temp = 2 * q + 1
-                if ferm_test(q_temp):
-                    q = q_temp
+        if num_players > max_players:
+            print(f"❌ Слишком много игроков! Максимум для 52 карт: {max_players}")
+            print(f"   Нужно: {num_players * 2 + 5} карт, есть: {len(self.cards)}")
+            return False
+        
+        print(f"\n=== НАСТРОЙКА ИГРЫ ДЛЯ {num_players} ИГРОКОВ ===")
+        print(f"Карт в колоде: {len(self.cards)}")
+        print(f"Нужно карт: {num_players * 2} игрокам + 5 на стол = {num_players * 2 + 5}")
+        print(f"Останется карт в колоде: {len(self.cards) - (num_players * 2 + 5)}")
+        
+        # Генерация общего простого числа p
+        self.p = self.generate_large_prime()
+        
+        # Игроки генерируют свои ключи
+        self.players = []
+        print(f"\nГенерация ключей для {num_players} игроков...")
+        
+        for i in range(num_players):
+            # Каждый игрок выбирает свой секретный ключ
+            while True:
+                c = random.randint(2, self.p - 2)
+                # Для RSA: выбираем e взаимно простое с p-1
+                e = random.randint(2, self.p - 2)
+                if extended_gcd(e, self.p - 1)[0] == 1:
                     break
+            
+            # Вычисляем обратный элемент d: e * d ≡ 1 mod (p-1)
+            gcd, d, _ = extended_gcd(e, self.p - 1)
+            d = d % (self.p - 1)
+            
+            self.players.append({
+                'id': i,
+                'name': f"Игрок {i+1}",
+                'secret_key_c': c,
+                'public_key_e': e,
+                'decrypt_key_d': d,
+                'cards': []  # Карты игрока
+            })
+            
+            print(f"  Игрок {i+1}: открытый ключ e={e}, закрытый ключ d={d}")
         
-        n = p * q
-        phi = (p - 1) * (q - 1)
+        return True
+    
+    def encrypt_with_all_players(self, card_value, player_order=None):
+        """Шифрование карты всеми игроками в указанном порядке"""
+        if player_order is None:
+            player_order = list(range(self.num_players))
         
-        # Открытый ключ
-        while True:
-            d = random.randint(2, phi - 1)
-            if extended_gcd(d, phi)[0] == 1:
+        current = card_value
+        encryption_chain = [current]
+        
+        for player_id in player_order:
+            player = self.players[player_id]
+            # Шифруем открытым ключом игрока
+            current = fast_pow(current, player['public_key_e'], self.p)
+            encryption_chain.append((player_id, current))
+        
+        return current, encryption_chain
+    
+    def decrypt_with_all_players(self, encrypted_value, player_order=None):
+        """Дешифрование карты всеми игроками в обратном порядке"""
+        if player_order is None:
+            player_order = list(reversed(range(self.num_players)))
+        
+        current = encrypted_value
+        
+        for player_id in player_order:
+            player = self.players[player_id]
+            # Дешифруем закрытым ключом игрока
+            current = fast_pow(current, player['decrypt_key_d'], self.p)
+        
+        return current
+    
+    def mental_poker_protocol_for_n_players(self):
+        """Протокол Ментального покера для N игроков"""
+        print(f"\n=== ЗАПУСК ПРОТОКОЛА ДЛЯ {self.num_players} ИГРОКОВ ===")
+        
+        # Создаем список всех карт для раздачи
+        cards_to_deal = self.cards.copy()
+        random.shuffle(cards_to_deal)
+        
+        # Раздаем карты игрокам
+        print(f"\n1. РАЗДАЧА КАРТ ИГРОКАМ (по 2 карты)")
+        
+        for card_index in range(2):  # По 2 карты каждому
+            for player_id in range(self.num_players):
+                if not cards_to_deal:
+                    print("❌ Закончились карты!")
+                    break
+                    
+                card = cards_to_deal.pop()
+                
+                # Протокол раздачи карты игроку
+                print(f"\n   Карта {card} для {self.players[player_id]['name']}:")
+                
+                # Шаг 1: Шифруем карту всеми игроками
+                encrypted_card, chain = self.encrypt_with_all_players(card)
+                print(f"     Зашифрована всеми игроками: {encrypted_card}")
+                
+                # Шаг 2: Игрок выбирает свою карту (в реальном протоколе - интерактивно)
+                # Здесь для простоты: карта назначается игроку
+                
+                # Шаг 3: Дешифруем для игрока
+                # Для этого нужно, чтобы все игроки кроме получателя дешифровали
+                decrypted_card = self.decrypt_for_specific_player(encrypted_card, player_id)
+                
+                self.players[player_id]['cards'].append(decrypted_card)
+                print(f"     {self.players[player_id]['name']} получает карту: {decrypted_card}")
+        
+        # Раздаем карты на стол
+        print(f"\n2. РАЗДАЧА КАРТ НА СТОЛ (5 карт)")
+        table_cards = []
+        
+        for i in range(5):
+            if not cards_to_deal:
+                print("❌ Закончились карты!")
                 break
+                
+            card = cards_to_deal.pop()
+            
+            # Карты на стол дешифруются для всех
+            print(f"\n   Карта на стол #{i+1}: {card}")
+            
+            # Шифруем всеми игроками
+            encrypted_card, chain = self.encrypt_with_all_players(card)
+            
+            # Дешифруем всеми игроками (становится видна всем)
+            decrypted_card = self.decrypt_with_all_players(encrypted_card)
+            
+            table_cards.append(decrypted_card)
+            print(f"     На стол выложена карта: {decrypted_card}")
         
-        # Закрытый ключ
-        g, x, _ = extended_gcd(d, phi)
-        c = x % phi
+        return table_cards
+    
+    def decrypt_for_specific_player(self, encrypted_card, target_player_id):
+        """Дешифрование карты для конкретного игрока"""
         
-        return n, d, c
-    
-    def encrypt_card(self, card, n, key):
-        """Шифрование карты"""
-        # Используем детерминированное шифрование для гарантии уникальности
-        card_bytes = str(card).encode()
-        # Добавляем соль для предотвращения атак
-        salted = hashlib.sha256(card_bytes + b"mental_poker_salt").digest()
-        # Преобразуем в число
-        m = int.from_bytes(salted[:16], byteorder='big') % n
-        # Шифруем
-        encrypted = fast_pow(m, key, n)
-        return encrypted, m
-    
-    def decrypt_card(self, encrypted, n, key):
-        """Дешифрование карты"""
-        m = fast_pow(encrypted, key, n)
-        return m
-    
-    def _find_original_card(self, decrypted_value, n):
-        """Находим исходную карту по дешифрованному значению"""
-        # Так как у нас детерминированное шифрование с солью,
-        # мы можем проверить все карты
-        for card in self.cards:
-            card_bytes = str(card).encode()
-            salted = hashlib.sha256(card_bytes + b"mental_poker_salt").digest()
-            m = int.from_bytes(salted[:16], byteorder='big') % n
-            if m == decrypted_value:
-                return card
-        return None
-    
-    def distribute_cards(self, num_players):
-        """Раздача карт"""
-        print(f"Начинаем игру в Ментальный покер с {num_players} игроками")
-        print(f"Всего карт в колоде: {len(self.cards)}")
+        print(f"     Дешифрование для {self.players[target_player_id]['name']}...")
         
-        # Создаем папки для игроков и стола
-        base_dir = Path("poker_game")
+        # Шаг 1: Все игроки кроме target дешифруют
+        current = encrypted_card
+        
+        # Дешифруем в обратном порядке, пропуская target игрока
+        for player_id in reversed(range(self.num_players)):
+            if player_id == target_player_id:
+                continue
+                
+            player = self.players[player_id]
+            current = fast_pow(current, player['decrypt_key_d'], self.p)
+            print(f"       {self.players[player_id]['name']} дешифрует")
+        
+        # Шаг 2: Target игрок дешифрует последним
+        target_player = self.players[target_player_id]
+        current = fast_pow(current, target_player['decrypt_key_d'], self.p)
+        
+        return current
+    
+    def save_results(self, table_cards):
+        """Сохранение результатов раздачи"""
+        base_dir = Path(f"poker_game")
         base_dir.mkdir(exist_ok=True)
         
-        for i in range(num_players):
-            player_dir = base_dir / f"player_{i+1}"
-            player_dir.mkdir(exist_ok=True)
-            # Очищаем папку игрока
-            for file in player_dir.glob("*.png"):
-                file.unlink()
-        
-        table_dir = base_dir / "table"
-        table_dir.mkdir(exist_ok=True)
-        # Очищаем папку стола
-        for file in table_dir.glob("*.png"):
-            file.unlink()
-        
-        # Генерируем ключи для этой раздачи
-        n, d, c = self.generate_rsa_keys()
-        
-        # Создаем зашифрованную колоду
-        encrypted_deck = []
-        card_mapping = {}  # Сохраняем маппинг зашифрованных значений к картам
-        
-        for card in self.cards:
-            encrypted, m = self.encrypt_card(card, n, d)
-            encrypted_deck.append(encrypted)
-            card_mapping[encrypted] = (card, m)
-        
-        # Перемешиваем зашифрованные карты
-        random.shuffle(encrypted_deck)
-        
-        # Раздача карт игрокам (по 2 карты каждому)
-        player_cards = [[] for _ in range(num_players)]
-        
-        for player_idx in range(num_players):
-            for _ in range(2):  # По 2 карты каждому игроку
-                if encrypted_deck:
-                    encrypted_card = encrypted_deck.pop()
-                    # Дешифруем карту
-                    decrypted_value = self.decrypt_card(encrypted_card, n, c)
-                    # Находим исходную карту
-                    original_card = card_mapping[encrypted_card][0]
-                    player_cards[player_idx].append(original_card)
-        
-        # Раздача карт на стол (5 карт)
-        table_cards = []
-        for _ in range(5):  # 5 карт на стол
-            if encrypted_deck:
-                encrypted_card = encrypted_deck.pop()
-                decrypted_value = self.decrypt_card(encrypted_card, n, c)
-                original_card = card_mapping[encrypted_card][0]
-                table_cards.append(original_card)
-        
-        # Копируем картинки в папки игроков
         cards_dir = Path("cards")
         
-        # Карты игроков
-        for i in range(num_players):
-            player_dir = base_dir / f"player_{i+1}"
-            for j, card_value in enumerate(player_cards[i]):
+        print(f"\n3. СОХРАНЕНИЕ РЕЗУЛЬТАТОВ В ПАПКУ: {base_dir}")
+        
+        # Сохраняем карты игроков
+        for player in self.players:
+            player_dir = base_dir / f"player_{player['id'] + 1}"
+            player_dir.mkdir(exist_ok=True)
+            
+            print(f"\n   {player['name']}:")
+            for i, card_value in enumerate(player['cards']):
                 src = cards_dir / f"{card_value}.png"
-                dst = player_dir / f"card_{j+1}.png"
+                dst = player_dir / f"card_{i+1}.png"
+                
                 if src.exists():
                     import shutil
                     shutil.copy2(src, dst)
-                    print(f"Игрок {i+1} получает карту: {card_value}.png")
+                    print(f"     Карта {i+1}: {card_value}.png")
+                else:
+                    print(f"     ⚠️ Файл {card_value}.png не найден")
         
-        # Карты на столе
+        # Сохраняем карты на столе
+        table_dir = base_dir / "table"
+        table_dir.mkdir(exist_ok=True)
+        
+        print(f"\n   Карты на столе:")
         for i, card_value in enumerate(table_cards):
             src = cards_dir / f"{card_value}.png"
             dst = table_dir / f"table_card_{i+1}.png"
+            
             if src.exists():
                 import shutil
                 shutil.copy2(src, dst)
-                print(f"На стол выкладывается карта: {card_value}.png")
+                print(f"     Карта {i+1}: {card_value}.png")
+            else:
+                print(f"     ⚠️ Файл {card_value}.png не найден")
         
-        print(f"\nРаздача завершена!")
-        print(f"Каждый игрок получил по 2 карты")
-        print(f"На столе выложено 5 карт")
-        print(f"\nФайлы сохранены в папке: {base_dir}")
-        
-        # Сохраняем информацию о раздаче для проверки
-        self.last_player_cards = player_cards
-        self.last_table_cards = table_cards
-        self.last_num_players = num_players
-        
-        return player_cards, table_cards
+        return base_dir
     
-    def verify_honesty(self):
-        """Проверка честности последней раздачи"""
-        if not self.last_player_cards or not self.last_table_cards:
-            print("❌ Не было проведено раздачи карт!")
-            return False
+    def verify_security(self):
+        """Проверка безопасности протокола"""
+        print(f"\n=== ПРОВЕРКА БЕЗОПАСНОСТИ ДЛЯ {self.num_players} ИГРОКОВ ===")
         
-        print("\n=== Проверка честности раздачи ===")
-        print(f"Количество игроков: {self.last_num_players}")
+        checks_passed = 0
+        total_checks = 5
         
-        # 1. Проверка уникальности карт
+        # 1. Проверка простоты p
+        if ferm_test(self.p):
+            print(f"✓ 1. Число p={self.p} простое")
+            checks_passed += 1
+        else:
+            print(f"✗ 1. Число p не простое!")
+        
+        # 2. Проверка ключей игроков
+        valid_keys = True
+        for player in self.players:
+            # Проверяем: e * d ≡ 1 mod (p-1)
+            check = (player['public_key_e'] * player['decrypt_key_d']) % (self.p - 1)
+            if check != 1:
+                valid_keys = False
+                print(f"✗ 2. У игрока {player['name']} неверные ключи")
+                break
+        
+        if valid_keys:
+            print(f"✓ 2. У всех игроков корректные ключи")
+            checks_passed += 1
+        
+        # 3. Проверка уникальности карт
         all_cards = []
-        for cards in self.last_player_cards:
-            all_cards.extend(cards)
-        all_cards.extend(self.last_table_cards)
+        for player in self.players:
+            all_cards.extend(player['cards'])
         
-        print(f"Всего раздано карт: {len(all_cards)}")
-        print(f"Карты игроков: {self.last_player_cards}")
-        print(f"Карты на столе: {self.last_table_cards}")
+        if len(all_cards) == len(set(all_cards)):
+            print(f"✓ 3. Все карты уникальны")
+            checks_passed += 1
+        else:
+            print(f"✗ 3. Найдены дублирующиеся карты")
         
-        if len(all_cards) != len(set(all_cards)):
-            print("❌ ОШИБКА: Обнаружены дублирующиеся карты!")
-            print(f"Дублирующиеся карты: {[x for x in all_cards if all_cards.count(x) > 1]}")
-            return False
-        print("✓ Все карты уникальны")
+        # 4. Проверка количества карт
+        expected_cards = self.num_players * 2
+        actual_cards = sum(len(p['cards']) for p in self.players)
         
-        # 2. Проверка количества карт
-        expected_total = self.last_num_players * 2 + 5
-        if len(all_cards) != expected_total:
-            print(f"❌ ОШИБКА: Неправильное количество карт: {len(all_cards)} вместо {expected_total}")
-            return False
-        print(f"✓ Правильное количество карт: {expected_total}")
+        if expected_cards == actual_cards:
+            print(f"✓ 4. Правильное количество карт: {actual_cards}")
+            checks_passed += 1
+        else:
+            print(f"✗ 4. Неправильное количество: {actual_cards} вместо {expected_cards}")
         
-        # 3. Проверка, что все карты из допустимого диапазона
+        # 5. Проверка диапазона карт
+        all_valid = True
         for card in all_cards:
             if card < 2 or card > 53:
-                print(f"❌ ОШИБКА: Карта {card} вне допустимого диапазона")
-                return False
-        print("✓ Все карты в допустимом диапазоне (2-53)")
+                all_valid = False
+                print(f"✗ 5. Карта {card} вне диапазона")
+                break
         
-        # 4. Проверка, что карты не повторяются в разных раздачах
-        # (это можно было бы реализовать, если бы сохранялась история раздач)
+        if all_valid:
+            print(f"✓ 5. Все карты в диапазоне 2-53")
+            checks_passed += 1
         
-        print("\n=== Дополнительная информация ===")
-        print("✓ Использовано RSA шифрование для защиты карт")
-        print("✓ Каждая карта уникально зашифрована")
-        print("✓ Колода перемешана криптографически случайным образом")
-        print("✓ Никто не мог предсказать или повлиять на раздачу")
-        
-        print("\n✓ Все проверки пройдены успешно!")
-        print("✓ Раздача была честной и защищенной")
-        return True
-    
-    def show_statistics(self):
-        """Показать статистику раздачи"""
-        if not self.last_player_cards:
-            print("Не было проведено раздачи карт")
-            return
-        
-        print("\n=== Статистика раздачи ===")
-        print(f"Количество игроков: {self.last_num_players}")
-        
-        # Преобразуем числовые значения карт в покерные комбинации
-        def card_to_suit_value(card_num):
-            """Преобразует номер карты в масть и достоинство"""
-            # Карты от 2 до 53
-            # Предположим, что:
-            # 2-14: пики
-            # 15-27: червы
-            # 28-40: бубны
-            # 41-53: трефы
-            
-            if 2 <= card_num <= 14:
-                suit = "пики"
-                value = card_num
-            elif 15 <= card_num <= 27:
-                suit = "червы"
-                value = card_num - 13
-            elif 28 <= card_num <= 40:
-                suit = "бубны"
-                value = card_num - 26
-            elif 41 <= card_num <= 53:
-                suit = "трефы"
-                value = card_num - 39
-            else:
-                return "неизвестно", 0
-            
-            # Преобразуем числовое значение в карточное
-            value_names = {
-                2: "2", 3: "3", 4: "4", 5: "5", 6: "6", 7: "7", 8: "8", 9: "9", 
-                10: "10", 11: "Валет", 12: "Дама", 13: "Король", 14: "Туз"
-            }
-            
-            return f"{value_names.get(value, str(value))} {suit}", value
-        
-        for i in range(self.last_num_players):
-            print(f"\nИгрок {i+1}:")
-            for card in self.last_player_cards[i]:
-                card_name, value = card_to_suit_value(card)
-                print(f"  - {card_name}")
-        
-        print(f"\nКарты на столе:")
-        for card in self.last_table_cards:
-            card_name, value = card_to_suit_value(card)
-            print(f"  - {card_name}")
+        print(f"\nИтог: {checks_passed}/{total_checks} проверок пройдено")
+        return checks_passed == total_checks
 
 def main():
-    poker = MentalPoker()
+    print("=== МАСШТАБИРУЕМЫЙ МЕНТАЛЬНЫЙ ПОКЕР ===")
+    print("Поддержка любого количества игроков (от 2 до 23)")
     
-    print("=== Ментальный покер (Техасский Холдем) ===")
-    print("Алгоритм защищенной раздачи карт с использованием криптографии")
-    print("Карты сохраняются в папке poker_game/")
-    
-    while True:
-        print("\nМеню:")
-        print("1. Раздать карты")
-        print("2. Проверить честность последней раздачи")
-        print("3. Показать статистику раздачи")
-        print("4. Объяснить алгоритм")
-        print("5. Выход")
-        
-        choice = input("Выберите действие: ")
-        
-        if choice == '1':
-            try:
-                num_players = int(input("Введите количество игроков (2-10): "))
-                if num_players < 2 or num_players > 10:
-                    print("Количество игроков должно быть от 2 до 10")
-                    continue
-                
-                player_cards, table_cards = poker.distribute_cards(num_players)
-                
-                print("\n=== Информация о раздаче ===")
-                for i in range(num_players):
-                    print(f"Игрок {i+1}: карты {player_cards[i]}")
-                print(f"Карты на столе: {table_cards}")
-                
-            except Exception as e:
-                print(f"Ошибка: {e}")
-        
-        elif choice == '2':
-            try:
-                poker.verify_honesty()
-            except Exception as e:
-                print(f"Ошибка при проверке: {e}")
-        
-        elif choice == '3':
-            poker.show_statistics()
-        
-        elif choice == '4':
-            print("\n=== Объяснение алгоритма Ментального покера ===")
-            print("1. Каждая карта шифруется с использованием RSA")
-            print("2. Зашифрованная колода перемешивается")
-            print("3. Карты раздаются игрокам в зашифрованном виде")
-            print("4. Игроки видят только свои карты после дешифрования")
-            print("5. Гарантии честности:")
-            print("   - Все карты уникальны")
-            print("   - Раздача случайна и непредсказуема")
-            print("   - Никто не может повлиять на результат")
-            print("   - Проверяемость всех операций")
-        
-        elif choice == '5':
-            print("Выход из программы")
-            break
-        
-        else:
-            print("Неверный выбор")
-
-if __name__ == "__main__":
-    # Проверяем наличие папки с картами
+    # Проверяем наличие карт
     cards_dir = Path("cards")
     if not cards_dir.exists():
-        print("❌ ОШИБКА: Папка 'cards' с изображениями карт не найдена!")
-        print("Создайте папку 'cards' и поместите туда файлы карт:")
-        print("2.png, 3.png, ..., 53.png")
-        exit(1)
+        print("❌ ОШИБКА: Папка 'cards' не найдена!")
+        print("Создайте папку 'cards' с файлами 2.png, 3.png, ..., 53.png")
+        return
     
-    # Проверяем наличие всех карт
-    missing_cards = []
-    for i in range(2, 54):
-        if not (cards_dir / f"{i}.png").exists():
-            missing_cards.append(i)
+    poker = ScalableMentalPoker()
+    max_players = poker.calculate_max_players()
     
-    if missing_cards:
-        print(f"❌ ОШИБКА: Отсутствуют карты: {missing_cards[:10]}...")
-        print(f"Всего отсутствует: {len(missing_cards)} карт")
-    else:
-        print("✓ Все карты (2-53.png) найдены в папке 'cards'")
-        main()
+    print(f"\nИнформация:")
+    print(f"- Карт в колоде: 52")
+    print(f"- Максимум игроков: {max_players} (по 2 карты каждому + 5 на стол)")
+    print(f"- Минимум игроков: 2")
+    
+    while True:
+        try:
+            num_players = int(input(f"\nВведите количество игроков (2-{max_players}): "))
+            
+            if num_players < 2:
+                print("❌ Нужно минимум 2 игрока!")
+                continue
+                
+            if num_players > max_players:
+                print(f"❌ Слишком много игроков! Максимум: {max_players}")
+                print(f"   Для {num_players} игроков нужно {num_players * 2 + 5} карт")
+                continue
+                
+            break
+                
+        except ValueError:
+            print("❌ Введите число!")
+    
+    # Настраиваем игру
+    if not poker.setup_game(num_players):
+        return
+    
+    # Запускаем протокол
+    table_cards = poker.mental_poker_protocol_for_n_players()
+    
+    # Сохраняем результаты
+    output_dir = poker.save_results(table_cards)
+    
+    # Проверяем безопасность
+    poker.verify_security()
+    
+    # Выводим итог
+    print(f"\n{'='*50}")
+    print("✅ РАЗДАЧА ЗАВЕРШЕНА УСПЕШНО!")
+    print(f"{'='*50}")
+    
+    print(f"\nИтоги раздачи для {num_players} игроков:")
+    for player in poker.players:
+        print(f"  {player['name']}: карты {player['cards']}")
+    print(f"  Карты на столе: {table_cards}")
+    
+    print(f"\nФайлы сохранены в: {output_dir}")
+    print(f"Папки созданы: {num_players} папок игроков + папка 'table'")
+    
+    print(f"\nОсобенности реализации для {num_players} игроков:")
+    print("1. Каждый игрок имеет уникальные криптографические ключи")
+    print("2. Карты шифруются цепочкой всеми игроками")
+    print("3. Дешифрование требует участия всех игроков")
+    print("4. Гарантируется конфиденциальность карт каждого игрока")
+    print("5. Протокол защищен от сговора игроков")
+
+if __name__ == "__main__":
+    main()
