@@ -1,7 +1,8 @@
 .DS_Store
 test.py
 *.webp
-*.png
+iris.png
 *.sig
 o
 c
+/poker_game
