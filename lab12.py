@@ -42,28 +42,25 @@ class ScalableMentalPoker:
         
         for i in range(num_players):
             # Генерируем секретный ключ c и вычисляем открытый ключ d
-            c = random.randint(2, self.p - 2)
-            
             while True:
-                e = random.randint(2, self.p - 2)
-                if extended_gcd(e, self.p - 1)[0] == 1:
+                c = random.randint(2, self.p - 2)
+                if extended_gcd(c, self.p - 1)[0] == 1:
                     break
             
-            gcd, d, _ = extended_gcd(e, self.p - 1)
+            gcd, d, _ = extended_gcd(c, self.p - 1)
             d = d % (self.p - 1)
             
             self.players.append({
                 'id': i,
                 'name': f"Игрок {i+1}",
-                'secret_key_c': c,
-                'encrypt_key_e': e,
+                'encrypt_key_e': c,
                 'decrypt_key_d': d,
                 'cards': [],  # Расшифрованные карты игрока
                 'encrypted_cards': [],  # Зашифрованные карты игрока
                 'partially_decrypted_cards': []  # Частично дешифрованные карты
             })
             
-            print(f"  Игрок {i+1}: открытый ключ e={e}, закрытый ключ d={d}")
+            print(f"  Игрок {i+1}: открытый ключ c={c}, закрытый ключ d={d}")
         
         return True
     
@@ -79,7 +76,7 @@ class ScalableMentalPoker:
         return encrypted_deck
     
     def mental_poker_protocol_for_n_players(self):
-        """Протокол Ментального покера для N игроков - С УЧЕТОМ ПОСЛЕДНЕГО ДЕШИФРОВАНИЯ"""
+        """Протокол Ментального покера для N игроков"""
         print(f"\n=== ЗАПУСК ПРОТОКОЛА ДЛЯ {self.num_players} ИГРОКОВ ===")
         
         self.encrypted_deck_by_players = []
@@ -152,16 +149,13 @@ class ScalableMentalPoker:
         
         print(f"   Карты на столе полностью дешифрованы: {table_cards}")
         
-        # Шаг 4: Частичное дешифрование карт игроков (каждый видит только свои)
         print(f"\n4. ЧАСТИЧНОЕ ДЕШИФРОВАНИЕ КАРТ ИГРОКОВ")
         
         for player_id in range(self.num_players):
             player = self.players[player_id]
-            
-            # Создаем копию зашифрованных карт игрока
+
             partially_decrypted = player['encrypted_cards'].copy()
             
-            # Все игроки, КРОМЕ целевого, дешифруют карты целевого игрока
             for other_player_id in reversed(range(self.num_players)):
                 if other_player_id == player_id:
                     continue  # Пропускаем самого игрока - он дешифрует последним

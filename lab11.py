@@ -4,21 +4,19 @@ from lab1 import ferm_test, extended_gcd, fast_pow
 
 class DSASignature:
     def __init__(self):
-        self.p = 0  # большое простое число (L бит)
-        self.q = 0  # простой делитель p-1 (N бит)
-        self.g = 0  # генератор подгруппы порядка q
-        self.x = 0  # закрытый ключ
-        self.y = 0  # открытый ключ
+        self.p = 0
+        self.q = 0
+        self.g = 0
+        self.x = 0
+        self.y = 0
     
     def generate_keys(self):
         """Генерация ключей по FIPS 186 (DSA)"""
-        # Сначала генерируем q (простое число)
         while True:
-            self.q = random.randint(2**15, 2**16)
+            self.q = random.randint(2**159, 2**160)
             if ferm_test(self.q):
                 break
         
-        # Генерируем p такое, что p-1 делится на q
         k = 1
         while True:
             self.p = k * self.q + 1
@@ -64,9 +62,9 @@ class DSASignature:
             file_data = f.read()
         
         # Шаг 1: Вычисление хеш-функции (SHA-256 по FIPS 186)
-        file_hash = hashlib.sha256(file_data).digest()
+        file_hash = hashlib.sha1(file_data).digest()
         
-        print(f"Хеш файла (SHA-256): {file_hash.hex()}")
+        print(f"Хеш файла (SHA-1): {file_hash.hex()}")
         
         r_list = []
         s_list = []
@@ -101,7 +99,6 @@ class DSASignature:
         if output_filename is None:
             output_filename = filename + '.sig'
         
-        # Сохраняем подпись
         with open(output_filename, 'w') as f:
             f.write(' '.join(str(r) for r in r_list) + '\n')
             f.write(' '.join(str(s) for s in s_list))
@@ -118,8 +115,7 @@ class DSASignature:
         with open(filename, 'rb') as f:
             file_data = f.read()
         
-        # Шаг 1: Вычисление хеш-функции
-        file_hash = hashlib.sha256(file_data).digest()
+        file_hash = hashlib.sha1(file_data).digest()
         
         with open(signature_filename, 'r') as f:
             signature_data = f.readlines()
@@ -137,12 +133,10 @@ class DSASignature:
         print(f"Загружена подпись DSA для {len(r_list)} байт хеша")
         print(f"Вычисленный хеш (SHA-256): {file_hash.hex()}")
         
-        # Проверяем подпись для каждого байта
         valid_count = 0
         total_bytes = len(file_hash)
         
         for i, (h_byte, r, s) in enumerate(zip(file_hash, r_list, s_list)):
-            # Шаг 2: Проверка условий 0 < r < q и 0 < s < q
             if r <= 0 or r >= self.q:
                 print(f"Ошибка: r[{i}] = {r} не удовлетворяет условию 0 < r < q")
                 continue
