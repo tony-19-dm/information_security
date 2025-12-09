@@ -4,7 +4,6 @@ from lab1 import ferm_test, extended_gcd, fast_pow
 
 class BlindSignatureVoting:
     def __init__(self):
-        # Серверные параметры (RSA)
         self.p = 0
         self.q = 0
         self.n = 0
@@ -24,7 +23,7 @@ class BlindSignatureVoting:
         self.steps = []
     
     def generate_server_keys(self):
-        """Генерация ключей сервера (RSA)"""
+        """Генерация ключей сервера"""
         # Генерируем простые числа p и q
         while True:
             self.p = random.randint(2**511, 2**512)  # 512-битные простые
