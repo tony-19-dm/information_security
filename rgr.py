@@ -1,70 +1,70 @@
+import random
 import json
 import os
-import random
-import time
-from lab1 import extended_gcd, fast_pow, ferm_test
+from pathlib import Path
 
-class FiatShamirVisualizer:
-    """Визуализация протокола Фиата-Шамира в одной программе"""
+def extended_gcd(a, b):
+    """Нахождение НОД"""
+    U = [a, 1, 0]
+    V = [b, 0, 1]
+
+    while V[0] != 0:
+        q = U[0] // V[0]
+        T = [U[0] % V[0], U[1] - q * V[1], U[2] - q * V[2]]
+        U = V
+        V = T
+    return U
+
+def fast_pow(a, x, p):
+    """Быстрое возведение в степень"""
+    y = 1
+    a = a % p
+    
+    while x > 0:
+        if x & 1:
+            y = (y * a) % p
+        a = (a * a) % p
+        x >>= 1
+    
+    return y
+
+def ferm_test(n):
+    """Проверка на простоту"""
+    k = 50
+    
+    if n <= 1:
+        return False
+    if n <= 3:
+        return True
+    if n % 2 == 0:
+        return False
+    
+    for _ in range(k):
+        a = random.randint(2, n - 2)
+        if fast_pow(a, n - 1, n) != 1:
+            return False
+    
+    return True
+
+class FiatShamirServer:
+    """Серверная часть протокола Фиата-Шамира"""
     
     def __init__(self):
-        self.N = 0
-        self.p = 0
-        self.q = 0
-        self.users_file = "fs_users.json"
-        self.keys_file = "fs_keys.json"
+        self.N = 0  # Модуль N = p*q
+        self.p = 0  # Секретное простое p
+        self.q = 0  # Секретное простое q
+        self.users_file = "users.json"
         self.users = {}
-        self.keys = {}
-        self.current_user = None
-        self.current_session = None
-        self.load_data()
+        self.current_session = {}
         
-    def load_data(self):
-        """Загрузка данных из файлов"""
-        # Загрузка пользователей
-        if os.path.exists(self.users_file):
-            try:
-                with open(self.users_file, 'r') as f:
-                    data = f.read()
-                    if data:
-                        self.users = json.loads(data)
-                        print(f"Загружено {len(self.users)} пользователей")
-            except:
-                print("Ошибка загрузки пользователей, создан новый файл")
-                self.users = {}
-        
-        # Загрузка ключей
-        if os.path.exists(self.keys_file):
-            try:
-                with open(self.keys_file, 'r') as f:
-                    data = f.read()
-                    if data:
-                        self.keys = json.loads(data)
-                        print(f"Загружено {len(self.keys)} наборов ключей")
-            except:
-                print("Ошибка загрузки ключей, создан новый файл")
-                self.keys = {}
-    
-    def save_data(self):
-        """Сохранение данных в файлы"""
-        # Сохранение пользователей
-        with open(self.users_file, 'w') as f:
-            json.dump(self.users, f, indent=2)
-        
-        # Сохранение ключей
-        with open(self.keys_file, 'w') as f:
-            json.dump(self.keys, f, indent=2)
-    
-    def generate_N(self, bits=256):
+    def generate_N(self, bits=512):
         """Генерация модуля N = p*q"""
-        print("\n" + "="*60)
-        print("ГЕНЕРАЦИЯ МОДУЛЯ N")
-        print("="*60)
+        print("СЕРВЕР: Генерация модуля N...")
         
         # Генерируем p
         while True:
             self.p = random.getrandbits(bits // 2)
-            self.p |= (1 << (bits // 2 - 1)) | 1
+            self.p |= (1 << (bits // 2 - 1)) | 1  # Делаем нечетным и устанавливаем старший бит
             if ferm_test(self.p):
                 break
         
@@ -77,383 +77,485 @@ class FiatShamirVisualizer:
         
         self.N = self.p * self.q
         
-        print(f"p = {self.p}")
-        print(f"q = {self.q}")
-        print(f"N = p * q = {self.N}")
-        print(f"Битность N: {self.N.bit_length()} бит")
+        print(f"СЕРВЕР: p = {self.p}")
+        print(f"СЕРВЕР: q = {self.q}")
+        print(f"СЕРВЕР: N = p*q = {self.N}")
+        print(f"СЕРВЕР: Битность N: {self.N.bit_length()} бит")
         
         return self.N
     
-    def register_user(self, username):
-        """Регистрация нового пользователя"""
-        print("\n" + "="*60)
-        print(f"РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ: {username}")
-        print("="*60)
-        
+    def register_user(self, username, v):
+        """Регистрация пользователя с открытым ключом v"""
         if username in self.users:
-            print(f"✗ Пользователь {username} уже существует!")
+            print(f"СЕРВЕР: Пользователь {username} уже существует!")
             return False
         
-        if self.N == 0:
-            print("i  Сначала сгенерируйте модуль N!")
+        # Проверяем, что v в правильном диапазоне
+        if v <= 1 or v >= self.N:
+            print(f"СЕРВЕР: v должно быть в диапазоне (1, N-1)")
             return False
         
-        # Шаг 1: Выбираем секретный ключ s (взаимно простое с N)
-        print("\n1. ВЫБОР СЕКРЕТНОГО КЛЮЧА s")
-        while True:
-            s = random.randint(2, self.N - 2)
-            if extended_gcd(s, self.N)[0] == 1:
-                break
-        
-        print(f"   Выбрано s = {s}")
-        print(f"   Проверка: gcd(s, N) = {extended_gcd(s, self.N)[0]} (должно быть 1)")
-        
-        # Шаг 2: Вычисляем открытый ключ v = s^2 mod N
-        print("\n2. ВЫЧИСЛЕНИЕ ОТКРЫТОГО КЛЮЧА v")
-        v = (s * s) % self.N
-        print(f"   v = s^2 mod N")
-        print(f"   v = {s}^2 mod {self.N} = {v}")
-        
-        # Сохраняем пользователя
         self.users[username] = {
             'username': username,
-            'v': v,
-            'registrations': 1
+            'v': v,  # Открытый ключ: v = s^2 mod N
+            'login_attempts': 0
         }
         
-        # Сохраняем ключи (в реальной системе s хранится только у пользователя!)
-        self.keys[username] = {
-            's': str(s),  # Сохраняем как строку
-            'N': str(self.N),
-            'v': str(v)
+        self.save_users()
+        print(f"СЕРВЕР: Пользователь {username} зарегистрирован с v={v}")
+        return True
+    
+    def save_users(self):
+        """Сохранение пользователей в файл"""
+        with open(self.users_file, 'w') as f:
+            json.dump(self.users, f, indent=2)
+        print(f"СЕРВЕР: Пользователи сохранены в {self.users_file}")
+    
+    def load_users(self):
+        """Загрузка пользователей из файла"""
+        if os.path.exists(self.users_file):
+            with open(self.users_file, 'r') as f:
+                self.users = json.load(f)
+            print(f"СЕРВЕР: Загружено {len(self.users)} пользователей")
+            return True
+        return False
+    
+    def get_user(self, username):
+        """Получение информации о пользователе"""
+        return self.users.get(username)
+    
+    def start_authentication(self, username):
+        """Начало аутентификации пользователя"""
+        if username not in self.users:
+            print(f"СЕРВЕР: Пользователь {username} не найден!")
+            return None
+        
+        # Сбрасываем текущую сессию
+        self.current_session = {
+            'username': username,
+            'v': self.users[username]['v'],
+            'rounds': 0,
+            'successful_rounds': 0,
+            'total_rounds': 20,  # Количество раундов t
+            'current_round': 0,
+            'x_received': None,
+            'e_sent': None,
+            'y_received': None
         }
         
-        self.save_data()
+        print(f"СЕРВЕР: Начало аутентификации для {username}")
+        print(f"СЕРВЕР: Открытый ключ v={self.current_session['v']}")
+        print(f"СЕРВЕР: Будет проведено {self.current_session['total_rounds']} раундов")
         
-        print("\n" + "="*60)
-        print(f"✓ ПОЛЬЗОВАТЕЛЬ {username} ЗАРЕГИСТРИРОВАН")
-        print("="*60)
-        print(f"Секретный ключ s = {s} (СОХРАНИТЕ ЭТОТ КЛЮЧ!)")
-        print(f"Открытый ключ v = {v} (отправлен на сервер)")
-        
-        return True
+        return {
+            'N': self.N,
+            'v': self.current_session['v'],
+            'total_rounds': self.current_session['total_rounds']
+        }
     
-    def simulate_authentication(self, username):
-        """Симуляция процесса аутентификации"""
-        print("\n" + "="*60)
-        print(f"АУТЕНТИФИКАЦИЯ ПОЛЬЗОВАТЕЛЯ: {username}")
-        print("="*60)
-        
-        if username not in self.users:
-            print(f"✗ Пользователь {username} не найден!")
+    def receive_x(self, x):
+        """Получение доказательства x от клиента"""
+        # Проверяем, что x в правильном диапазоне
+        if x <= 0 or x >= self.N:
+            print(f"СЕРВЕР: x должно быть в диапазоне (1, N-1)")
             return False
         
-        if username not in self.keys:
-            print(f"✗ Не найден секретный ключ для пользователя {username}!")
+        self.current_session['x_received'] = x
+        print(f"СЕРВЕР: Получено x = {x}")
+        
+        # Генерируем случайный бит e (0 или 1)
+        e = random.randint(0, 1)
+        self.current_session['e_sent'] = e
+        print(f"СЕРВЕР: Сгенерирован вызов e = {e}")
+        
+        return e
+    
+    def receive_y(self, y):
+        """Получение ответа y от клиента и проверка"""
+        if y == 0:
+            print("СЕРВЕР: y = 0! Доказательство отвергнуто.")
             return False
         
-        # Загружаем данные пользователя
-        user_data = self.users[username]
-        key_data = self.keys[username]
+        self.current_session['y_received'] = y
+        self.current_session['current_round'] += 1
         
-        v = int(user_data['v'])
-        s = int(key_data['s'])
-        N = int(key_data['N'])
+        x = self.current_session['x_received']
+        v = self.current_session['v']
+        e = self.current_session['e_sent']
         
-        print(f"Открытый ключ v = {v}")
-        print(f"Модуль N = {N}")
+        # Проверяем: y^2 ≡ x * v^e mod N
+        left_side = (y * y) % self.N
+        right_side = (x * fast_pow(v, e, self.N)) % self.N
         
-        if self.N != 0 and N != self.N:
-            print(f"i  Внимание: N из ключей ({N}) отличается от текущего ({self.N})")
-            print(f"   Использую N из ключей: {N}")
+        print(f"СЕРВЕР: Проверка раунда {self.current_session['current_round']}:")
+        print(f"  y^2 mod N = {left_side}")
+        print(f"  x * v^{e} mod N = {right_side}")
         
-        # Устанавливаем текущие параметры
-        current_N = N
-        current_v = v
-        current_s = s
-        
-        print(f"\nПАРАМЕТРЫ АУТЕНТИФИКАЦИИ:")
-        print(f"  Пользователь: {username}")
-        print(f"  Секретный ключ s = {current_s}")
-        print(f"  Открытый ключ v = {current_v}")
-        print(f"  Модуль N = {current_N}")
-        
-        # Количество раундов
-        t = 20
-        print(f"  Количество раундов: {t}")
-        print(f"  Вероятность обмана: 1/2^{t} = 1/{2**t}")
-        
-        successful_rounds = 0
-        
-        for round_num in range(1, t + 1):
-            print(f"\n{'='*50}")
-            print(f"РАУНД {round_num}/{t}")
-            print(f"{'='*50}")
-            
-            # Шаг 1: Пользователь выбирает случайное r
-            print(f"\n1. ПОЛЬЗОВАТЕЛЬ ВЫБИРАЕТ СЛУЧАЙНОЕ r")
-            r = random.randint(1, current_N - 1)
-            print(f"   Выбрано r = {r}")
-            
-            # Вычисляем x = r^2 mod N
-            x = (r * r) % current_N
-            print(f"   Вычисляем x = r^2 mod N")
-            print(f"   x = {r}^2 mod {current_N} = {x}")
-            
-            # Шаг 2: Сервер выбирает случайный бит e
-            print(f"\n2. СЕРВЕР ВЫБИРАЕТ СЛУЧАЙНЫЙ БИТ e")
-            e = random.randint(0, 1)
-            print(f"   Выбрано e = {e}")
-            
-            # Шаг 3: Пользователь вычисляет y = r * s^e mod N
-            print(f"\n3. ПОЛЬЗОВАТЕЛЬ ВЫЧИСЛЯЕТ y = r * s^e mod N")
-            if e == 0:
-                y = r % current_N
-                print(f"   При e = 0: y = r mod N = {y}")
-            else:  # e == 1
-                y = (r * current_s) % current_N
-                print(f"   При e = 1: y = r * s mod N = {y}")
-            
-            # Шаг 4: Сервер проверяет y
-            print(f"\n4. СЕРВЕР ПРОВЕРЯЕТ y")
-            
-            if y == 0:
-                print(f"   ✗ y = 0! Доказательство отвергнуто.")
-                break
-            
-            # Проверяем: y^2 ≡ x * v^e mod N
-            print(f"   Проверяем: y^2 ≡ x * v^e mod N")
-            
-            # Вычисляем левую часть: y^2 mod N
-            left_side = (y * y) % current_N
-            print(f"   Левая часть: y^2 mod N = {y}^2 mod {current_N} = {left_side}")
-            
-            # Вычисляем правую часть: x * v^e mod N
-            if e == 0:
-                right_side = x % current_N
-                print(f"   Правая часть: x * v^0 mod N = x mod N = {right_side}")
-            else:
-                v_pow_e = (current_v * 1) % current_N  # v^1 = v
-                right_side = (x * v_pow_e) % current_N
-                print(f"   Правая часть: x * v^1 mod N = {x} * {current_v} mod {current_N} = {right_side}")
-            
-            # Проверяем равенство
-            if left_side == right_side:
-                successful_rounds += 1
-                print(f"\n   ✓ Раунд {round_num} пройден успешно!")
-                print(f"   Успешных раундов: {successful_rounds}/{t}")
-            else:
-                print(f"\n   ✗ Раунд {round_num} не пройден!")
-                print(f"   {left_side} ≠ {right_side}")
-                break
-            
-            # Пауза для наглядности
-            time.sleep(0.5)
-        
-        print(f"\n{'='*60}")
-        if successful_rounds == t:
-            print(f"✓ АУТЕНТИФИКАЦИЯ УСПЕШНА!")
-            print(f"   Все {t} раундов пройдены успешно")
-            
-            # Обновляем статистику
-            self.users[username]['successful_auths'] = self.users[username].get('successful_auths', 0) + 1
-            self.save_data()
+        if left_side == right_side:
+            self.current_session['successful_rounds'] += 1
+            print(f"  ✓ Раунд {self.current_session['current_round']} пройден успешно!")
+            print(f"  Успешных раундов: {self.current_session['successful_rounds']}/{self.current_session['total_rounds']}")
+            return True
         else:
-            print(f"✗ АУТЕНТИФИКАЦИЯ НЕ УДАЛАСЬ")
-            print(f"   Пройдено только {successful_rounds} из {t} раундов")
-        
-        return successful_rounds == t
+            print(f"  ✗ Раунд {self.current_session['current_round']} не пройден!")
+            return False
     
-    def show_user_details(self, username):
-        """Показать детали пользователя"""
-        if username not in self.users:
-            print(f"✗ Пользователь {username} не найден!")
+    def is_authenticated(self):
+        """Проверка успешности всех раундов"""
+        if self.current_session['current_round'] < self.current_session['total_rounds']:
             return False
         
-        user_data = self.users[username]
-        has_keys = username in self.keys
+        success = self.current_session['successful_rounds'] == self.current_session['total_rounds']
         
-        print(f"\nДЕТАЛИ ПОЛЬЗОВАТЕЛЯ: {username}")
-        print(f"{'='*40}")
-        print(f"Открытый ключ v: {user_data.get('v', 'Нет')}")
-        print(f"Регистраций: {user_data.get('registrations', 0)}")
-        print(f"Успешных аутентификаций: {user_data.get('successful_auths', 0)}")
-        
-        if has_keys:
-            key_data = self.keys[username]
-            print(f"\nСЕКРЕТНЫЕ КЛЮЧИ (для демонстрации):")
-            print(f"  s: {key_data.get('s', 'Нет')}")
-            print(f"  N: {key_data.get('N', 'Нет')}")
-        else:
-            print(f"\ni  Секретные ключи не найдены")
-        
-        return True
-    
-    def show_all_users(self):
-        """Показать всех пользователей"""
-        print(f"\nВСЕ ПОЛЬЗОВАТЕЛИ ({len(self.users)}):")
-        print(f"{'='*60}")
-        
-        if not self.users:
-            print("Нет зарегистрированных пользователей")
-            return
-        
-        for username, data in self.users.items():
-            print(f"\n👤 {username}:")
-            print(f"  Открытый ключ v: {data.get('v', 'Нет')}")
-            print(f"  Успешных входов: {data.get('successful_auths', 0)}")
-            if username in self.keys:
-                print(f"  ✓ Секретный ключ сохранен")
-            else:
-                print(f"  i  Секретный ключ не найден")
-    
-    def interactive_mode(self):
-        """Интерактивный режим работы"""
-        print("="*60)
-        print("ВИЗУАЛИЗАЦИЯ ПРОТОКОЛА ФИАТА-ШАМИРА")
-        print("="*60)
-        print("Доказательство с нулевым разглашением знания")
-        
-        while True:
-            print("\n" + "="*60)
-            print("ГЛАВНОЕ МЕНЮ:")
-            print("1. Сгенерировать модуль N")
-            print("2. Зарегистрировать нового пользователя")
-            print("3. Симулировать аутентификацию")
-            print("4. Показать всех пользователей")
-            print("5. Показать детали пользователя")
-            print("7. Тестовый сценарий")
-            print("8. Выход")
-            
-            choice = input("\nВыберите действие: ").strip()
-            
-            if choice == '1':
-                # Генерация модуля N
-                bits = input("Введите битность N (рекомендуется 256-512): ").strip()
-                try:
-                    bits = int(bits) if bits else 256
-                    if bits < 128:
-                        print("i  Слишком маленькая битность! Использую 128 бит")
-                        bits = 128
-                    self.generate_N(bits=bits)
-                except ValueError:
-                    print("✗ Неверный ввод! Использую 256 бит")
-                    self.generate_N(bits=256)
-            
-            elif choice == '2':
-                # Регистрация пользователя
-                if self.N == 0:
-                    print("i  Сначала сгенерируйте модуль N!")
-                    continue
-                
-                username = input("Введите имя пользователя: ").strip()
-                if not username:
-                    print("✗ Имя пользователя не может быть пустым")
-                    continue
-                
-                self.register_user(username)
-            
-            elif choice == '3':
-                # Аутентификация
-                if not self.users:
-                    print("✗ Нет зарегистрированных пользователей!")
-                    continue
-                
-                print("\nДоступные пользователи:")
-                for username in self.users.keys():
-                    print(f"  • {username}")
-                
-                username = input("\nВведите имя пользователя для аутентификации: ").strip()
-                if not username:
-                    print("✗ Имя пользователя не может быть пустым")
-                    continue
-                
-                self.simulate_authentication(username)
-            
-            elif choice == '4':
-                # Показать всех пользователей
-                self.show_all_users()
-            
-            elif choice == '5':
-                # Показать детали пользователя
-                if not self.users:
-                    print("✗ Нет зарегистрированных пользователей!")
-                    continue
-                
-                print("\nДоступные пользователи:")
-                for username in self.users.keys():
-                    print(f"  • {username}")
-                
-                username = input("\nВведите имя пользователя: ").strip()
-                if username:
-                    self.show_user_details(username)
-            
-            elif choice == '7':
-                # Тестовый сценарий
-                self.test_scenario()
-            
-            elif choice == '8':
-                # Выход
-                print("\nСохранение данных...")
-                self.save_data()
-                print("Выход из программы")
-                break
-            
-            else:
-                print("✗ Неверный выбор!")
-    
-    def test_scenario(self):
-        """Запуск тестового сценария"""
-        print("\n" + "="*60)
-        print("ТЕСТОВЫЙ СЦЕНАРИЙ")
-        print("="*60)
-        
-        # Шаг 1: Генерация N
-        print("\n1. ГЕНЕРАЦИЯ МОДУЛЯ N...")
-        if self.N == 0:
-            self.generate_N(bits=128)  # Маленький для демонстрации
-        else:
-            print(f"   Использую существующий N = {self.N}")
-        
-        # Шаг 2: Регистрация тестового пользователя
-        print("\n2. РЕГИСТРАЦИЯ ТЕСТОВОГО ПОЛЬЗОВАТЕЛЯ...")
-        test_user = "test_user_" + str(random.randint(1000, 9999))
-        
-        if test_user in self.users:
-            print(f"   Тестовый пользователь {test_user} уже существует")
-        else:
-            self.register_user(test_user)
-        
-        # Шаг 3: Аутентификация
-        print("\n3. АУТЕНТИФИКАЦИЯ...")
-        success = self.simulate_authentication(test_user)
-        
-        # Шаг 4: Показать результат
-        print("\n4. РЕЗУЛЬТАТ ТЕСТА:")
         if success:
-            print(f"   ✓ Тест пройден успешно!")
-            print(f"   Пользователь {test_user} успешно аутентифицирован")
+            print(f"\nСЕРВЕР: Аутентификация успешна!")
+            print(f"СЕРВЕР: Все {self.current_session['total_rounds']} раундов пройдены")
+            print(f"СЕРВЕР: Добро пожаловать, {self.current_session['username']}!")
         else:
-            print(f"   ✗ Тест не пройден!")
-            print(f"   Аутентификация пользователя {test_user} не удалась")
+            print(f"\nСЕРВЕР: Аутентификация не удалась!")
+            print(f"СЕРВЕР: Только {self.current_session['successful_rounds']} из {self.current_session['total_rounds']} раундов пройдены")
         
-        # Шаг 5: Показать детали
-        print("\n5. ДЕТАЛИ ТЕСТОВОГО ПОЛЬЗОВАТЕЛЯ:")
-        self.show_user_details(test_user)
+        # Обновляем статистику пользователя
+        if self.current_session['username'] in self.users:
+            self.users[self.current_session['username']]['login_attempts'] += 1
+            if success:
+                print(f"СЕРВЕР: Успешных входов: {self.users[self.current_session['username']]['login_attempts']}")
         
+        self.save_users()
+        return success
+
+class FiatShamirClient:
+    """Клиентская часть протокола Фиата-Шамира"""
+    
+    def __init__(self):
+        self.N = 0  # Модуль от сервера
+        self.s = 0  # Секретный ключ (известен только клиенту)
+        self.v = 0  # Открытый ключ (хранится на сервере)
+        self.username = ""
+        self.current_session = {}
+        
+    def generate_keys(self, N, username):
+        """Генерация секретного и открытого ключей"""
+        self.N = N
+        self.username = username
+        
+        # Выбираем s, взаимно простое с N
+        while True:
+            self.s = random.randint(2, N - 2)
+            if extended_gcd(self.s, N)[0] == 1:
+                break
+        
+        # Вычисляем v = s^2 mod N
+        self.v = (self.s * self.s) % N
+        
+        print(f"КЛИЕНТ: Сгенерированы ключи для {username}:")
+        print(f"  Секретный ключ s = {self.s}")
+        print(f"  Открытый ключ v = s^2 mod N = {self.v}")
+        print(f"  Проверка: gcd(s, N) = {extended_gcd(self.s, N)[0]} (должно быть 1)")
+        
+        return self.v
+    
+    def load_keys(self, N, s, username):
+        """Загрузка существующих ключей"""
+        self.N = N
+        self.s = s
+        self.username = username
+        self.v = (s * s) % N
+        
+        print(f"КЛИЕНТ: Загружены ключи для {username}:")
+        print(f"  s = {s}")
+        print(f"  v = {self.v}")
+    
+    def start_authentication(self, server_params):
+        """Начало аутентификации с сервером"""
+        self.N = server_params['N']
+        self.v = server_params['v']
+        total_rounds = server_params['total_rounds']
+        
+        self.current_session = {
+            'total_rounds': total_rounds,
+            'current_round': 0,
+            'successful_rounds': 0,
+            'r_values': [],
+            'x_values': [],
+            'e_values': [],
+            'y_values': []
+        }
+        
+        print(f"КЛИЕНТ: Начало аутентификации для {self.username}")
+        print(f"КЛИЕНТ: N = {self.N}")
+        print(f"КЛИЕНТ: v = {self.v}")
+        print(f"КЛИЕНТ: Будет проведено {total_rounds} раундов")
+        
+    def generate_x(self):
+        """Генерация доказательства x = r^2 mod N"""
+        # Выбираем случайное r ∈ [1, N-1]
+        r = random.randint(1, self.N - 1)
+        
+        # Вычисляем x = r^2 mod N
+        x = (r * r) % self.N
+        
+        # Сохраняем для текущего раунда
+        self.current_session['r_values'].append(r)
+        self.current_session['x_values'].append(x)
+        self.current_session['current_round'] += 1
+        
+        print(f"КЛИЕНТ: Раунд {self.current_session['current_round']}:")
+        print(f"  Выбрано r = {r}")
+        print(f"  Отправляем x = r^2 mod N = {x}")
+        
+        return x
+    
+    def compute_y(self, e):
+        """Вычисление ответа y = r * s^e mod N"""
+        current_round = self.current_session['current_round'] - 1
+        r = self.current_session['r_values'][current_round]
+        
+        # Сохраняем вызов e
+        self.current_session['e_values'].append(e)
+        
+        # Вычисляем y = r * s^e mod N
+        if e == 0:
+            y = r % self.N
+        else:  # e == 1
+            y = (r * self.s) % self.N
+        
+        self.current_session['y_values'].append(y)
+        
+        print(f"КЛИЕНТ: Получен вызов e = {e}")
+        print(f"КЛИЕНТ: Вычисляем y = r * s^{e} mod N = {y}")
+        
+        return y
+    
+    def get_round_info(self, round_num):
+        """Получение информации о раунде"""
+        if round_num < 0 or round_num >= len(self.current_session['r_values']):
+            return None
+        
+        return {
+            'r': self.current_session['r_values'][round_num],
+            'x': self.current_session['x_values'][round_num],
+            'e': self.current_session['e_values'][round_num],
+            'y': self.current_session['y_values'][round_num]
+        }
+
+def simulate_protocol():
+    """Симуляция полного протокола Фиата-Шамира"""
+    print("="*60)
+    print("СИМУЛЯЦИЯ ПРОТОКОЛА ФИАТА-ШАМИРА")
+    print("="*60)
+    
+    # Создаем сервер
+    server = FiatShamirServer()
+    server.load_users()
+    
+    # Генерируем модуль N
+    N = server.generate_N(bits=256)  # Для демонстрации используем 256 бит
+    
+    # Создаем клиента
+    client = FiatShamirClient()
+    
+    # Регистрация нового пользователя
+    username = input("\nВведите имя пользователя для регистрации: ")
+    
+    # Клиент генерирует ключи
+    v = client.generate_keys(N, username)
+    
+    # Сервер регистрирует пользователя
+    if server.register_user(username, v):
+        print(f"\n✓ Пользователь {username} успешно зарегистрирован!")
+    else:
+        print(f"\n❌ Ошибка регистрации пользователя {username}")
+        return
+    
+    # Аутентификация
+    print("\n" + "="*60)
+    print("НАЧАЛО АУТЕНТИФИКАЦИИ")
+    print("="*60)
+    
+    # Клиент начинает аутентификацию
+    server_params = server.start_authentication(username)
+    client.start_authentication(server_params)
+    
+    # Выполняем t раундов
+    t = server_params['total_rounds']
+    
+    for round_num in range(t):
+        print(f"\n--- Раунд {round_num + 1}/{t} ---")
+        
+        # Шаг 1: Клиент выбирает r и отправляет x = r^2 mod N
+        x = client.generate_x()
+        
+        # Шаг 2: Сервер получает x и отправляет вызов e
+        e = server.receive_x(x)
+        
+        # Шаг 3: Клиент вычисляет y = r * s^e mod N
+        y = client.compute_y(e)
+        
+        # Шаг 4: Сервер проверяет y
+        if not server.receive_y(y):
+            print(f"❌ Раунд {round_num + 1} не пройден!")
+            break
+    
+    # Проверяем успешность аутентификации
+    if server.is_authenticated():
         print("\n" + "="*60)
-        print("ТЕСТОВЫЙ СЦЕНАРИЙ ЗАВЕРШЕН")
+        print("✅ АУТЕНТИФИКАЦИЯ ПРОЙДЕНА УСПЕШНО!")
+        print("="*60)
+        
+        # Показываем детали последнего раунда
+        if client.current_session['current_round'] > 0:
+            last_round = client.get_round_info(client.current_session['current_round'] - 1)
+            if last_round:
+                print("\nДетали последнего раунда:")
+                print(f"  r = {last_round['r']}")
+                print(f"  x = r^2 mod N = {last_round['x']}")
+                print(f"  e = {last_round['e']}")
+                print(f"  y = r * s^{last_round['e']} mod N = {last_round['y']}")
+                
+                # Проверяем вручную
+                y_sq = (last_round['y'] * last_round['y']) % N
+                x_v_e = (last_round['x'] * fast_pow(v, last_round['e'], N)) % N
+                print(f"  Проверка: y^2 = {y_sq}, x * v^e = {x_v_e}")
+                print(f"  Совпадают: {y_sq == x_v_e}")
+    else:
+        print("\n" + "="*60)
+        print("❌ АУТЕНТИФИКАЦИЯ НЕ УДАЛАСЬ!")
         print("="*60)
 
+def interactive_mode():
+    """Интерактивный режим работы"""
+    server = FiatShamirServer()
+    server.load_users()
+    
+    if not server.users:
+        print("СЕРВЕР: Генерация нового модуля N...")
+        server.generate_N(bits=256)
+    
+    print(f"\nСЕРВЕР: Модуль N = {server.N}")
+    print(f"СЕРВЕР: Зарегистрированных пользователей: {len(server.users)}")
+    
+    while True:
+        print("\n" + "="*60)
+        print("МЕНЮ ПРОТОКОЛА ФИАТА-ШАМИРА")
+        print("="*60)
+        print("1. Зарегистрировать нового пользователя")
+        print("2. Аутентифицировать существующего пользователя")
+        print("3. Показать всех пользователей")
+        print("4. Симуляция полного протокола")
+        print("5. Выход")
+        
+        choice = input("\nВыберите действие: ")
+        
+        if choice == '1':
+            # Регистрация нового пользователя
+            username = input("Введите имя пользователя: ")
+            
+            if username in server.users:
+                print(f"Пользователь {username} уже существует!")
+                continue
+            
+            print(f"\nГенерация ключей для {username}...")
+            
+            # Создаем клиента
+            client = FiatShamirClient()
+            
+            # Клиент генерирует ключи
+            v = client.generate_keys(server.N, username)
+            
+            # Показываем ключи пользователю
+            print(f"\nКлючи пользователя {username}:")
+            print(f"  Секретный ключ s = {client.s} (НИКОМУ НЕ ПОКАЗЫВАЙТЕ!)")
+            print(f"  Открытый ключ v = {v} (будет отправлен на сервер)")
+            
+            # Регистрируем на сервере
+            if server.register_user(username, v):
+                print(f"\n✓ Пользователь {username} успешно зарегистрирован!")
+                print("ВАЖНО: Сохраните свой секретный ключ s для последующих входов!")
+            
+        elif choice == '2':
+            # Аутентификация
+            username = input("Введите имя пользователя: ")
+            
+            if username not in server.users:
+                print(f"Пользователь {username} не найден!")
+                continue
+            
+            print(f"\nАутентификация пользователя {username}...")
+            
+            # Запрашиваем секретный ключ
+            try:
+                s = int(input("Введите ваш секретный ключ s: "))
+            except ValueError:
+                print("❌ Неверный формат ключа!")
+                continue
+            
+            # Создаем клиента с загруженным ключом
+            client = FiatShamirClient()
+            client.load_keys(server.N, s, username)
+            
+            # Проверяем, что v совпадает
+            if client.v != server.users[username]['v']:
+                print("❌ Неверный секретный ключ! v не совпадает.")
+                continue
+            
+            # Начинаем аутентификацию
+            server_params = server.start_authentication(username)
+            client.start_authentication(server_params)
+            
+            t = server_params['total_rounds']
+            all_rounds_successful = True
+            
+            # Выполняем раунды
+            for round_num in range(t):
+                print(f"\n--- Раунд {round_num + 1}/{t} ---")
+                
+                # Клиент отправляет x
+                x = client.generate_x()
+                
+                # Сервер отправляет e
+                e = server.receive_x(x)
+                
+                # Клиент вычисляет y
+                y = client.compute_y(e)
+                
+                # Сервер проверяет
+                if not server.receive_y(y):
+                    all_rounds_successful = False
+                    print(f"❌ Раунд {round_num + 1} не пройден!")
+                    break
+            
+            # Проверяем результат
+            if all_rounds_successful and server.is_authenticated():
+                print(f"\n✅ Добро пожаловать, {username}!")
+            else:
+                print(f"\n❌ Аутентификация не удалась!")
+            
+        elif choice == '3':
+            # Показать всех пользователей
+            print(f"\nЗарегистрированные пользователи ({len(server.users)}):")
+            for username, data in server.users.items():
+                print(f"  {username}: v={data['v']}, входов: {data.get('login_attempts', 0)}")
+        
+        elif choice == '4':
+            # Симуляция полного протокола
+            simulate_protocol()
+        
+        elif choice == '5':
+            print("Выход из программы")
+            break
+        
+        else:
+            print("❌ Неверный выбор!")
+
 def main():
-    """Основная функция"""
-    try:
-        visualizer = FiatShamirVisualizer()
-        visualizer.interactive_mode()
-    except KeyboardInterrupt:
-        print("\n\nПрограмма прервана пользователем")
-    except Exception as e:
-        print(f"\nНеожиданная ошибка: {e}")
+    print("="*60)
+    print("ПРОТОКОЛ ДОКАЗАТЕЛЬСТВА С НУЛЕВЫМ ЗНАНИЕМ ФИАТА-ШАМИРА")
+    print("="*60)
+    print("Реализация клиент-серверной аутентификации")
+    print("Стойкость основана на сложности извлечения квадратного корня по модулю N")
+    
+    interactive_mode()
 
 if __name__ == "__main__":
     main()
