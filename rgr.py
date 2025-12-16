@@ -50,31 +50,28 @@ class FiatShamirServer:
     """Серверная часть протокола Фиата-Шамира"""
     
     def __init__(self):
-        self.N = 0  # Модуль N = p*q
-        self.p = 0  # Секретное простое p
-        self.q = 0  # Секретное простое q
+        self.N = 0 # Модуль N = p*q
+        self.p = 0 # Секретное простое p
+        self.q = 0 # Секретное простое q
         self.users_file = "users.json"
         self.users = {}
         self.current_session = {}
         
-    def generate_N(self, bits=512):
+    def generate_N(self):
         """Генерация модуля N = p*q"""
         print("СЕРВЕР: Генерация модуля N...")
-        
-        # Генерируем p
+        # Генерируем простые числа p и q
         while True:
-            self.p = random.getrandbits(bits // 2)
-            self.p |= (1 << (bits // 2 - 1)) | 1  # Делаем нечетным и устанавливаем старший бит
+            self.p = random.randint(2**511, 2**512)  # 512-битные простые
             if ferm_test(self.p):
                 break
         
-        # Генерируем q
         while True:
-            self.q = random.getrandbits(bits // 2)
-            self.q |= (1 << (bits // 2 - 1)) | 1
+            self.q = random.randint(2**511, 2**512)
             if ferm_test(self.q) and self.q != self.p:
                 break
         
+        # Вычисляем параметры
         self.N = self.p * self.q
         
         print(f"СЕРВЕР: p = {self.p}")
@@ -350,7 +347,7 @@ def simulate_protocol():
     server.load_users()
     
     # Генерируем модуль N
-    N = server.generate_N(bits=256)  # Для демонстрации используем 256 бит
+    N = server.generate_N()
     
     # Создаем клиента
     client = FiatShamirClient()
@@ -365,7 +362,7 @@ def simulate_protocol():
     if server.register_user(username, v):
         print(f"\n✓ Пользователь {username} успешно зарегистрирован!")
     else:
-        print(f"\n❌ Ошибка регистрации пользователя {username}")
+        print(f"\n✗ Ошибка регистрации пользователя {username}")
         return
     
     # Аутентификация
@@ -388,19 +385,26 @@ def simulate_protocol():
         
         # Шаг 2: Сервер получает x и отправляет вызов e
         e = server.receive_x(x)
+
+        # Иммитация обмана
+        if round_num == 19:
+            if e == 0:
+                e = 1
+            else:
+                e = 0
         
         # Шаг 3: Клиент вычисляет y = r * s^e mod N
         y = client.compute_y(e)
-        
+
         # Шаг 4: Сервер проверяет y
         if not server.receive_y(y):
-            print(f"❌ Раунд {round_num + 1} не пройден!")
+            print(f"✗ Раунд {round_num + 1} не пройден!")
             break
     
     # Проверяем успешность аутентификации
     if server.is_authenticated():
         print("\n" + "="*60)
-        print("✅ АУТЕНТИФИКАЦИЯ ПРОЙДЕНА УСПЕШНО!")
+        print("✓ АУТЕНТИФИКАЦИЯ ПРОЙДЕНА УСПЕШНО!")
         print("="*60)
         
         # Показываем детали последнего раунда
@@ -420,7 +424,7 @@ def simulate_protocol():
                 print(f"  Совпадают: {y_sq == x_v_e}")
     else:
         print("\n" + "="*60)
-        print("❌ АУТЕНТИФИКАЦИЯ НЕ УДАЛАСЬ!")
+        print("✗ АУТЕНТИФИКАЦИЯ НЕ УДАЛАСЬ!")
         print("="*60)
 
 def interactive_mode():
@@ -430,7 +434,7 @@ def interactive_mode():
     
     if not server.users:
         print("СЕРВЕР: Генерация нового модуля N...")
-        server.generate_N(bits=256)
+        server.generate_N()
     
     print(f"\nСЕРВЕР: Модуль N = {server.N}")
     print(f"СЕРВЕР: Зарегистрированных пользователей: {len(server.users)}")
@@ -487,7 +491,7 @@ def interactive_mode():
             try:
                 s = int(input("Введите ваш секретный ключ s: "))
             except ValueError:
-                print("❌ Неверный формат ключа!")
+                print("✗ Неверный формат ключа!")
                 continue
             
             # Создаем клиента с загруженным ключом
@@ -496,7 +500,7 @@ def interactive_mode():
             
             # Проверяем, что v совпадает
             if client.v != server.users[username]['v']:
-                print("❌ Неверный секретный ключ! v не совпадает.")
+                print("✗ Неверный секретный ключ! v не совпадает.")
                 continue
             
             # Начинаем аутентификацию
@@ -522,14 +526,14 @@ def interactive_mode():
                 # Сервер проверяет
                 if not server.receive_y(y):
                     all_rounds_successful = False
-                    print(f"❌ Раунд {round_num + 1} не пройден!")
+                    print(f"✗ Раунд {round_num + 1} не пройден!")
                     break
             
             # Проверяем результат
             if all_rounds_successful and server.is_authenticated():
-                print(f"\n✅ Добро пожаловать, {username}!")
+                print(f"\n✓ Добро пожаловать, {username}!")
             else:
-                print(f"\n❌ Аутентификация не удалась!")
+                print(f"\n✗ Аутентификация не удалась!")
             
         elif choice == '3':
             # Показать всех пользователей
@@ -546,7 +550,7 @@ def interactive_mode():
             break
         
         else:
-            print("❌ Неверный выбор!")
+            print("✗ Неверный выбор!")
 
 def main():
     print("="*60)
